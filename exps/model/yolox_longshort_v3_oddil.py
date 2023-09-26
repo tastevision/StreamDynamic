@@ -242,7 +242,9 @@ class YOLOXLONGSHORTV3ODDIL(nn.Module):
 
             return outputs
         elif mode == 'on_pipe':
-            fpn_outs, buffer_ = self.backbone(x,  buffer=buffer, mode='on_pipe')
+            # fpn_outs, buffer_ = self.backbone(x,  buffer=buffer, mode='on_pipe')
+            buffer_ = None
+            fpn_outs = self.backbone(x)
             outputs = self.head(fpn_outs)
             
             return outputs, buffer_

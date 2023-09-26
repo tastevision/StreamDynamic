@@ -192,6 +192,8 @@ class LONGSHORT_ONEX_COCOEvaluator:
 
                 if int(img_id) in [15060,15061]:
                     continue
+                elif self.dataloader.dataset.coco.dataset['images'][int(img_id)]['fid'] + 1 == len(self.dataloader.dataset.coco.dataset['images']):
+                    continue
                 elif self.dataloader.dataset.coco.dataset['images'][int(img_id+1)]['fid'] == 0:
                     continue
                 elif self.dataloader.dataset.coco.dataset['images'][int(img_id)]['fid'] == 0:

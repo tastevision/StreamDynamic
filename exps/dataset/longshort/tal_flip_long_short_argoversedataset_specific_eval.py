@@ -71,9 +71,9 @@ class LONGSHORT_ARGOVERSEDataset_SE(Dataset):
     def __len__(self):
         return len(self.ids)
 
-    def __del__(self):
-        if self.imgs:
-            del self.imgs
+    # def __del__(self):
+    #     if self.imgs:
+    #         del self.imgs
 
     def _get_specific_frame(self, frame_cfg):
 

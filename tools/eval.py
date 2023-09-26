@@ -11,6 +11,7 @@ from loguru import logger
 import torch
 import torch.backends.cudnn as cudnn
 from torch.nn.parallel import DistributedDataParallel as DDP
+import torch.distributed as dist
 
 from yolox.core import launch
 from yolox.exp import get_exp
@@ -151,50 +152,99 @@ def main(exp, args, num_gpu):
 
     # evaluator = exp.get_evaluator(args.batch_size, is_distributed, args.test, args.legacy)
     evaluator = exp.get_evaluator(args.batch_size, is_distributed, args.test)
-    evaluator.per_class_AP = True
-    evaluator.per_class_AR = True
 
-    torch.cuda.set_device(rank)
-    model.cuda(rank)
-    model.eval()
+    if isinstance(evaluator, list):
+        torch.cuda.set_device(rank)
+        model.cuda(rank)
+        model.eval()
 
-    if not args.speed and not args.trt:
-        if args.ckpt is None:
-            ckpt_file = os.path.join(file_name, "best_ckpt.pth")
+        if not args.speed and not args.trt:
+            if args.ckpt is None:
+                ckpt_file = os.path.join(file_name, "best_ckpt.pth")
+            else:
+                ckpt_file = args.ckpt
+            logger.info("loading checkpoint from {}".format(ckpt_file))
+            loc = "cuda:{}".format(rank)
+            ckpt = torch.load(ckpt_file, map_location=loc)
+            model.load_state_dict(ckpt["model"], strict=False)  # 这里的strict=False不可以少
+            logger.info("loaded checkpoint done.")
+
+        if is_distributed:
+            model = DDP(model, device_ids=[rank])
+
+        if args.fuse:
+            logger.info("\tFusing model...")
+            model = fuse_model(model)
+
+        if args.trt:
+            assert (
+                not args.fuse and not is_distributed and args.batch_size == 1
+            ), "TensorRT model is not support model fusing and distributed inferencing!"
+            trt_file = os.path.join(file_name, "model_trt.pth")
+            assert os.path.exists(
+                trt_file
+            ), "TensorRT model is not found!\n Run tools/trt.py first!"
+            model.head.decode_in_inference = False
+            decoder = model.head.decode_outputs
         else:
-            ckpt_file = args.ckpt
-        logger.info("loading checkpoint from {}".format(ckpt_file))
-        loc = "cuda:{}".format(rank)
-        ckpt = torch.load(ckpt_file, map_location=loc)
-        model.load_state_dict(ckpt["model"], strict=False)
-        logger.info("loaded checkpoint done.")
+            trt_file = None
+            decoder = None
 
-    if is_distributed:
-        model = DDP(model, device_ids=[rank])
+        for cur_evaluator in evaluator:
+            cur_evaluator.per_class_AP = True
+            cur_evaluator.per_class_AR = True
 
-    if args.fuse:
-        logger.info("\tFusing model...")
-        model = fuse_model(model)
-
-    if args.trt:
-        assert (
-            not args.fuse and not is_distributed and args.batch_size == 1
-        ), "TensorRT model is not support model fusing and distributed inferencing!"
-        trt_file = os.path.join(file_name, "model_trt.pth")
-        assert os.path.exists(
-            trt_file
-        ), "TensorRT model is not found!\n Run tools/trt.py first!"
-        model.head.decode_in_inference = False
-        decoder = model.head.decode_outputs
+            # start evaluate
+            logger.info(f"Scene test: sid = {cur_evaluator.sid}")
+            *_, summary = cur_evaluator.evaluate(
+                model, is_distributed, args.fp16, trt_file, decoder, exp.test_size
+            )
+            logger.info("\n" + summary)
     else:
-        trt_file = None
-        decoder = None
+        evaluator.per_class_AP = True
+        evaluator.per_class_AR = True
 
-    # start evaluate
-    *_, summary = evaluator.evaluate(
-        model, is_distributed, args.fp16, trt_file, decoder, exp.test_size
-    )
-    logger.info("\n" + summary)
+        torch.cuda.set_device(rank)
+        model.cuda(rank)
+        model.eval()
+
+        if not args.speed and not args.trt:
+            if args.ckpt is None:
+                ckpt_file = os.path.join(file_name, "best_ckpt.pth")
+            else:
+                ckpt_file = args.ckpt
+            logger.info("loading checkpoint from {}".format(ckpt_file))
+            loc = "cuda:{}".format(rank)
+            ckpt = torch.load(ckpt_file, map_location=loc)
+            model.load_state_dict(ckpt["model"], strict=False)
+            logger.info("loaded checkpoint done.")
+
+        if is_distributed:
+            model = DDP(model, device_ids=[rank])
+
+        if args.fuse:
+            logger.info("\tFusing model...")
+            model = fuse_model(model)
+
+        if args.trt:
+            assert (
+                not args.fuse and not is_distributed and args.batch_size == 1
+            ), "TensorRT model is not support model fusing and distributed inferencing!"
+            trt_file = os.path.join(file_name, "model_trt.pth")
+            assert os.path.exists(
+                trt_file
+            ), "TensorRT model is not found!\n Run tools/trt.py first!"
+            model.head.decode_in_inference = False
+            decoder = model.head.decode_outputs
+        else:
+            trt_file = None
+            decoder = None
+
+        # start evaluate
+        *_, summary = evaluator.evaluate(
+            model, is_distributed, args.fp16, trt_file, decoder, exp.test_size
+        )
+        logger.info("\n" + summary)
 
 
 if __name__ == "__main__":

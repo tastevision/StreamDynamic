@@ -31,7 +31,7 @@ class Exp(MyExp):
 
         self.exp_name = os.path.split(os.path.realpath(__file__))[1].split(".")[0]
 
-        self.output_dir = './data/output/stream_yolo/longshort_new_archi_oddil/l3-s1_logits'
+        self.output_dir = './data/output/'
 
         self.short_cfg = dict(
                             frame_num=1,

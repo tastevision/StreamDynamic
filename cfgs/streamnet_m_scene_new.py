@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 import torch.distributed as dist
 from yolox.exp import Exp as MyExp
+import json
 
 
 class Exp(MyExp):
@@ -12,8 +13,8 @@ class Exp(MyExp):
         super(Exp, self).__init__()
         self.depth_t = 1
         self.width_t = 1
-        self.depth = 0.33
-        self.width = 0.50
+        self.depth = 0.67
+        self.width = 0.75
         self.data_num_workers = 6
         self.num_classes = 8
         self.input_size = (600, 960)  # (h,w)
@@ -24,7 +25,7 @@ class Exp(MyExp):
 
         self.warmup_epochs = 1
         self.max_epoch = 8
-        self.no_aug_epochs = 8
+        self.no_aug_epochs = self.max_epoch
         self.eval_interval = 1
         self.train_ann = 'train.json'
         self.val_ann = 'val.json'
@@ -37,14 +38,14 @@ class Exp(MyExp):
                             frame_num=1,
                             delta=1,
                             with_short_cut=False,
-                            out_channels=[((64, 128, 256), 1), ],
+                            out_channels=[((96, 192, 384), 1), ],
                         )
         self.long_cfg = dict(
                             frame_num=3,
                             delta=1,
                             with_short_cut=False,
                             include_current_frame=False,
-                            out_channels=[((21, 42, 85), 3), ],
+                            out_channels=[((32, 64, 128), 3), ],
                         )
         self.yolox_cfg = dict(
                             merge_form="long_fusion",
@@ -52,9 +53,9 @@ class Exp(MyExp):
                         )
         self.neck_cfg = {
             'depth': 1.0,
-            'hidden_ratio': 0.75,
-            'in_channels': [128, 256, 512],
-            'out_channels': [128, 256, 512],
+            'hidden_ratio': 1.0,
+            'in_channels': [192, 384, 768],
+            'out_channels': [192, 384, 768],
             'act': 'silu',
             'spp': False,
             'block_name': 'BasicBlock_3x3_Reverse',
@@ -101,7 +102,7 @@ class Exp(MyExp):
             # head_s = TALHead(self.num_classes, self.width, in_channels=in_channels, gamma=1.0,
             #                  ignore_thr=0.5, ignore_value=1.5)
 
-            one_factor = 0.2
+            one_factor = 0.4
             head_s = TALHeadODDil(
                 self.num_classes, self.width, in_channels=in_channels, gamma=1.0, 
                 ignore_thr=0.5, ignore_value=1.5, 
@@ -209,28 +210,58 @@ class Exp(MyExp):
         from exps.dataset.longshort.tal_flip_long_short_argoversedataset import LONGSHORT_ARGOVERSEDataset
         from exps.data.data_augment_flip import LongShortValTransform
 
-        valdataset = LONGSHORT_ARGOVERSEDataset(
-            data_dir='./data',
-            json_file='val.json',
-            name='val',
-            img_size=self.test_size,
-            preproc=LongShortValTransform(short_frame_num=self.short_cfg["frame_num"],
-                                          long_frame_num=self.long_cfg["frame_num"]),
-            short_cfg=self.short_cfg,
-            long_cfg=self.long_cfg,
-        )
+        # 在这里拆分val.json并且返回多个evaluation dataloader
+        with open(f"data/Argoverse-HD/annotations/val.json", "r") as f:
+            full_anno = json.loads(f.read())
+        sequences = full_anno["sequences"]
+        val_ds_loader_list = []
 
-        if is_distributed:
-            batch_size = batch_size // dist.get_world_size()
-            sampler = torch.utils.data.distributed.DistributedSampler(valdataset, shuffle=False)
-        else:
-            sampler = torch.utils.data.SequentialSampler(valdataset)
+        for sid in sequences:
+            ds = LONGSHORT_ARGOVERSEDataset(
+                data_dir='data',
+                json_file=f'val_{sid}.json',
+                name='val',
+                img_size=self.test_size,
+                preproc=LongShortValTransform(short_frame_num=self.short_cfg["frame_num"],
+                                              long_frame_num=self.long_cfg["frame_num"]),
+                short_cfg=self.short_cfg,
+                long_cfg=self.long_cfg,
+            )
+            if is_distributed:
+                tmp_batch_size = batch_size // dist.get_world_size()
+                sampler = torch.utils.data.distributed.DistributedSampler(ds, shuffle=False)
+            else:
+                tmp_batch_size = batch_size
+                sampler = torch.utils.data.SequentialSampler(ds)
+            dataloader_kwargs = {"num_workers": self.data_num_workers, "pin_memory": True, "sampler": sampler}
+            dataloader_kwargs["batch_size"] = tmp_batch_size
+            val_loader = torch.utils.data.DataLoader(ds, **dataloader_kwargs)
+            val_ds_loader_list.append([val_loader, sid])
 
-        dataloader_kwargs = {"num_workers": self.data_num_workers, "pin_memory": True, "sampler": sampler}
-        dataloader_kwargs["batch_size"] = batch_size
-        val_loader = torch.utils.data.DataLoader(valdataset, **dataloader_kwargs)
+        return val_ds_loader_list
 
-        return val_loader
+        # valdataset = LONGSHORT_ARGOVERSEDataset(
+        #     data_dir='./data',
+        #     json_file='val.json',
+        #     name='val',
+        #     img_size=self.test_size,
+        #     preproc=LongShortValTransform(short_frame_num=self.short_cfg["frame_num"],
+        #                                   long_frame_num=self.long_cfg["frame_num"]),
+        #     short_cfg=self.short_cfg,
+        #     long_cfg=self.long_cfg,
+        # )
+
+        # if is_distributed:
+        #     batch_size = batch_size // dist.get_world_size()
+        #     sampler = torch.utils.data.distributed.DistributedSampler(valdataset, shuffle=False)
+        # else:
+        #     sampler = torch.utils.data.SequentialSampler(valdataset)
+
+        # dataloader_kwargs = {"num_workers": self.data_num_workers, "pin_memory": True, "sampler": sampler}
+        # dataloader_kwargs["batch_size"] = batch_size
+        # val_loader = torch.utils.data.DataLoader(valdataset, **dataloader_kwargs)
+
+        # return val_loader
 
     def random_resize(self, data_loader, epoch, rank, is_distributed):
         import random
@@ -274,17 +305,23 @@ class Exp(MyExp):
         # from exps.evaluators.onex_stream_evaluator import ONEX_COCOEvaluator
         from exps.evaluators.longshort_onex_stream_evaluator import LONGSHORT_ONEX_COCOEvaluator
 
-        val_loader = self.get_eval_loader(batch_size, is_distributed, testdev)
-        evaluator = LONGSHORT_ONEX_COCOEvaluator(
-            dataloader=val_loader,
-            img_size=self.test_size,
-            confthre=self.test_conf,
-            nmsthre=self.nmsthre,
-            num_classes=self.num_classes,
-            testdev=testdev,
-        )
-        return evaluator
+        # 在场景实验中，get_eval_loader返回的是按场景分割的dataloader列表，所以这里的evaluator也是列表
+        val_loader_list = self.get_eval_loader(batch_size, is_distributed, testdev)
+        evaluator_list = []
 
+        for dataloader, sid in val_loader_list:
+            this_evaluator = LONGSHORT_ONEX_COCOEvaluator(
+                dataloader=dataloader,
+                img_size=self.test_size,
+                confthre=self.test_conf,
+                nmsthre=self.nmsthre,
+                num_classes=self.num_classes,
+                testdev=testdev,
+            )
+            this_evaluator.sid = sid
+            evaluator_list.append(this_evaluator)
+
+        return evaluator_list
 
     def get_trainer(self, args):
         from exps.train_utils.longshort_dil_trainer import Trainer
