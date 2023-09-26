@@ -1,0 +1,8 @@
+* 项目说明
+:properties:
+:custom_id: 6264cdb993a3e7bc1dc9d7487dd2fe6f
+:id: 6264cdb993a3e7bc1dc9d7487dd2fe6f
+:date: 2023-09-26 11:14:31 周二
+:end:
+
+这个项目将开发目前的一些有关Streaming perception的想法，看看结果怎么样
