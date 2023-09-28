@@ -5,4 +5,136 @@
 :date: 2023-09-26 11:14:31 周二
 :end:
 
-这个项目将开发目前的一些有关Streaming perception的想法，看看结果怎么样
+这个项目将开发目前的一些有关 Streaming perception 的想法，看看结果怎么样
+
+整个项目的基础是 StreamYOLO，这个项目的特点是把所有模型的获取都放在 =./cfgs/<...>.py= 脚本里，其他的 =./tools/= 下的脚本都是在处理一些参数的
+
+** 模型获取的过程
+:properties:
+:custom_id: 7b816de93f7f761f47334b1909fc5763
+:id: 7b816de93f7f761f47334b1909fc5763
+:date: 2023-09-28 11:09:39 周四
+:end:
+
+在项目中，实验的定义是在 =./cfgs/= 中给出的，其中一个脚本都只给出一个类，即 =Exp= ，在本项目的 =./tools/train_dil.py= 中可以看到这个类是如何调用的
+
+这与系列的研究都是基于 yolox 的，这个项目有如下的工作方式
+
+#+name: a0aaac14af2c0633454c7b4a619a6098
+#+begin_src python
+  args = make_parser().parse_args()        # 读取命令行参数
+  exp = get_exp(args.exp_file, args.name)  # 加载模型
+  main(exp, args)                          # 模型推理
+#+end_src
+
+这里的 =make_parser()= 需要自定义，返回一个由 =argparse= 包定义的参数解析器，不多介绍
+
+exp 来自 =from yolox.exp import get_exp= ，是 yolox 包中定义的实验框架，我们可以通过重载这个类来完成不同的实验步骤，这个过程就是定义 =args.exp_file= 和 =args.name=
+
+在改进代码的时候，最快速的做法不是读懂其中的每一行，而是把别人改进把地方找到，然后修改这些就可以了
+
+我们可以看一下 =StreamYOLO/tools/train.py= 和 =DAMO-StreamNet/tools/train_dil.py= 的区别：
+
+#+name: 620a29eade4f909a5f0b1a565cca424a
+#+begin_src shell :results verbatim
+  ssh lab_pc "diff ~/project/StreamYOLO/tools/train.py ~/project/DAMO-StreamNet/tools/train_dil.py"
+#+end_src
+
+#+RESULTS: 620a29eade4f909a5f0b1a565cca424a
+: 47a48
+: >     parser.add_argument("-t", "--teacher_ckpt", default=None, type=str, help="checkpoint file of teacher model")
+
+很简单，改进的地方只有蒸馏这块，所以这个训练脚本可以不用看了
+
+主要的修改部分可以从 =./cfgs/streamnet_s.py= 开始看
+
+在 streamnet 的主模型结构中，有 long 分支和 short 分支，前者输入多帧的历史帧，后者输入当前帧
+
+在 =./cfgs/streamnet_s.py= 的 =get_model= 函数中可以看到，两个分支分别是由 =DFPPAFPNLONGV3= 和 =DFPPAFPNSHORTV3= 定义的，它们两者的区别如下
+
+#+name: 7d6d8245416aac2a247b0b1ed275a2f1
+#+begin_src diff
+16c16
+< class DFPPAFPNLONGV3(nn.Module):
+---
+> class DFPPAFPNSHORTV3(nn.Module):
+18c18
+<     相比DFPPAFPNLONG，直接指定输出的通道数
+---
+>     相比DFPPAFPNSHORT，直接指定输出的通道数
+31,32c31,32
+<         # dynamic_fusion=False,
+<         merge_form="pure_concat", # "pure_concat", "add"
+---
+>         # avg_channel=True, # 是否所有通道平均，False当前帧占一半通道
+>         # dynamic_fusion=False, # 对除了当前帧的其它帧进一步融合，如果为True，则不使用aux layers
+34d33
+<
+41d39
+<         self.merge_form = merge_form
+126,135c124,126
+<             if self.merge_form == "pure_concat":
+<                 pan_out2 = torch.cat(pan_out2s, dim=1) + rurrent_pan_out2
+<                 pan_out1 = torch.cat(pan_out1s, dim=1) + rurrent_pan_out1
+<                 pan_out0 = torch.cat(pan_out0s, dim=1) + rurrent_pan_out0
+<             elif self.merge_form == "add":
+<                 pan_out2 = torch.sum(torch.stack(pan_out2s), dim=0) + rurrent_pan_out2
+<                 pan_out1 = torch.sum(torch.stack(pan_out1s), dim=0) + rurrent_pan_out1
+<                 pan_out0 = torch.sum(torch.stack(pan_out0s), dim=0) + rurrent_pan_out0
+<             else:
+<                 raise Exception(f'merge_form must be in ["pure_concat", "add"].')
+---
+>             pan_out2 = torch.cat(pan_out2s, dim=1) + rurrent_pan_out2
+>             pan_out1 = torch.cat(pan_out1s, dim=1) + rurrent_pan_out1
+>             pan_out0 = torch.cat(pan_out0s, dim=1) + rurrent_pan_out0
+137,146c128,131
+<             if self.merge_form == "pure_concat":
+<                 pan_out2 = torch.cat(pan_out2s, dim=1)
+<                 pan_out1 = torch.cat(pan_out1s, dim=1)
+<                 pan_out0 = torch.cat(pan_out0s, dim=1)
+<             elif self.merge_form == "add":
+<                 pan_out2 = torch.sum(torch.stack(pan_out2s), dim=0)
+<                 pan_out1 = torch.sum(torch.stack(pan_out1s), dim=0)
+<                 pan_out0 = torch.sum(torch.stack(pan_out0s), dim=0)
+<             else:
+<                 raise Exception(f'merge_form must be in ["pure_concat", "add"].')
+---
+>             pan_out2 = torch.cat(pan_out2s, dim=1)
+>             pan_out1 = torch.cat(pan_out1s, dim=1)
+>             pan_out0 = torch.cat(pan_out0s, dim=1)
+>
+147a133
+>         rurrent_pan_outs = (rurrent_pan_out2, rurrent_pan_out1, rurrent_pan_out0)
+149c135
+<         return outputs
+---
+>         return outputs, rurrent_pan_outs
+#+end_src
+
+** 历史帧的动态过程的实现
+:properties:
+:custom_id: 04091d29d246529b6d5aa820ad9e6fe4
+:id: 04091d29d246529b6d5aa820ad9e6fe4
+:date: 2023-09-28 18:35:13 周四
+:end:
+
+在这里有个问题，历史帧的输入长度是固定的：
+
+#+name: 37146243c5c0f35f438c6f133ed3265d
+#+begin_src python
+  # 输入当前帧的分支
+  self.short_cfg = dict(
+                      frame_num=1,  # short只接受一帧
+                      delta=1,
+                      with_short_cut=False,
+                      out_channels=[((64, 128, 256), 1), ],
+                  )
+  # 输入历史帧的分支
+  self.long_cfg = dict(
+                      frame_num=3,  # long接受三帧
+                      delta=1,
+                      with_short_cut=False,
+                      include_current_frame=False,
+                      out_channels=[((21, 42, 85), 3), ],
+                  )
+#+end_src

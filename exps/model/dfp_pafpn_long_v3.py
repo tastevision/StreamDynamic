@@ -38,7 +38,7 @@ class DFPPAFPNLONGV3(nn.Module):
         self.in_channels = in_channels
         self.frame_num = frame_num
         self.with_short_cut = with_short_cut
-        self.merge_form = merge_form
+        self.merge_form = merge_form  # 相比short模型，在这里多加了一个特征融合策略，这在论文中有体现
         self.out_channels = out_channels
         self.conv_group_num = len(out_channels)
         self.conv_group_dict = defaultdict(dict)
@@ -122,6 +122,7 @@ class DFPPAFPNLONGV3(nn.Module):
                 pan_out0s.append(getattr(self, f"group_{i}_jian0")(all_pan_out0s[frame_id]))
             frame_start_id += group_frame_num
 
+        # 以下和short不同，上面的都一样
         if self.with_short_cut:
             if self.merge_form == "pure_concat":
                 pan_out2 = torch.cat(pan_out2s, dim=1) + rurrent_pan_out2
@@ -148,7 +149,7 @@ class DFPPAFPNLONGV3(nn.Module):
 
         return outputs
 
-    def online_forward(self, input, buffer=None, node='star'):
+    def online_forward(self, input, buffer=None, node='star'): # 这个函数不用看了，和short没区别
         """
         Args:
             inputs: input images.
@@ -203,7 +204,7 @@ class DFPPAFPNLONGV3(nn.Module):
     
 
 
-    def forward(self, input, buffer=None, mode='off_pipe', backbone_neck=None):
+    def forward(self, input, buffer=None, mode='off_pipe', backbone_neck=None): # 这个函数不用看了，和short没区别
 
         if mode=='off_pipe':
             # Glops caculate mode

@@ -23,33 +23,41 @@ class Exp(MyExp):
         self.basic_lr_per_img = 0.001 / 64.0
 
         self.warmup_epochs = 1
-        self.max_epoch = 8
+        self.max_epoch = 8            # 此处用于控制最大训练轮数
         self.no_aug_epochs = 8
         self.eval_interval = 1
         self.train_ann = 'train.json'
         self.val_ann = 'val.json'
 
+        # 这里的实验名是通过当前文件名直接解析出来的，也可以自定义
         self.exp_name = os.path.split(os.path.realpath(__file__))[1].split(".")[0]
 
+        # 结果输出路径
         self.output_dir = './data/output/'
 
+        # 以下都是这个项目新增的
+        # 输入当前帧的分支
         self.short_cfg = dict(
-                            frame_num=1,
+                            frame_num=1,  # short只接受一帧
                             delta=1,
                             with_short_cut=False,
                             out_channels=[((64, 128, 256), 1), ],
                         )
-        self.long_cfg = dict(
-                            frame_num=3,
-                            delta=1,
-                            with_short_cut=False,
-                            include_current_frame=False,
-                            out_channels=[((21, 42, 85), 3), ],
-                        )
+        # 输入历史帧的分支（由于是动态的，这里直接定义多个）
+        self.long_cfg = [
+            dict(
+                frame_num=fn,
+                delta=1,
+                with_short_cut=False,
+                include_current_frame=False,
+                out_channels=[((21, 42, 85), 3), ],
+            ) for fn in [1, 2, 3, 4]
+        ]
         self.yolox_cfg = dict(
                             merge_form="long_fusion",
                             with_short_cut=True,
                         )
+        # 这里的neck也就是backbone，特征提取器，在long branch和short branch中，这个backbone是共享的
         self.neck_cfg = {
             'depth': 1.0,
             'hidden_ratio': 0.75,
@@ -68,6 +76,7 @@ class Exp(MyExp):
         from exps.model.dfp_pafpn_long_v3 import DFPPAFPNLONGV3
         from exps.model.dfp_pafpn_short_v3 import DFPPAFPNSHORTV3
         from exps.model.longshort_backbone_neck_v2 import BACKBONENECKV2
+        from exps.model.speed_detector import SpeedDetector
         from exps.model.tal_head import TALHead
         from exps.model.tal_head_dil import TALHeadDil
         from exps.model.tal_head_oddil import TALHeadODDil
@@ -81,23 +90,30 @@ class Exp(MyExp):
 
         if getattr(self, "model", None) is None:
             in_channels = [256, 512, 1024]
-            long_backbone_s = (DFPPAFPNLONGV3(self.depth, 
-                                            self.width, 
-                                            in_channels=in_channels, 
-                                            frame_num=self.long_cfg["frame_num"],
-                                            with_short_cut=self.long_cfg["with_short_cut"],
-                                            out_channels=self.long_cfg["out_channels"])
-                            if self.long_cfg["frame_num"] != 0 else None)
-            short_backbone_s = DFPPAFPNSHORTV3(self.depth, 
-                                             self.width, 
-                                             in_channels=in_channels, 
-                                             frame_num=self.short_cfg["frame_num"],
-                                             with_short_cut=self.short_cfg["with_short_cut"],
-                                             out_channels=self.short_cfg["out_channels"])
-            backbone_neck_s = BACKBONENECKV2(self.depth, 
-                                           self.width, 
-                                           in_channels=in_channels,
-                                           neck_cfg=self.neck_cfg)
+            long_backbone_s = [
+                DFPPAFPNLONGV3(
+                    self.depth, 
+                    self.width, 
+                    in_channels=in_channels, 
+                    frame_num=self.long_cfg[i]["frame_num"],
+                    with_short_cut=self.long_cfg[i]["with_short_cut"],
+                    out_channels=self.long_cfg[i]["out_channels"]
+                ) for i in range(len(self.long_cfg))
+            ]
+            short_backbone_s = DFPPAFPNSHORTV3(
+                self.depth, 
+                self.width, 
+                in_channels=in_channels, 
+                frame_num=self.short_cfg["frame_num"],
+                with_short_cut=self.short_cfg["with_short_cut"],
+                out_channels=self.short_cfg["out_channels"],
+            )
+            backbone_neck_s = BACKBONENECKV2(
+                self.depth, 
+                self.width, 
+                in_channels=in_channels,
+                neck_cfg=self.neck_cfg,
+            )
             # head_s = TALHead(self.num_classes, self.width, in_channels=in_channels, gamma=1.0,
             #                  ignore_thr=0.5, ignore_value=1.5)
 
@@ -115,18 +131,23 @@ class Exp(MyExp):
             head_t = TALHeadDil(self.num_classes, self.width_t, in_channels=in_channels, gamma=1.0,
                                 ignore_thr=0.5, ignore_value=1.5, eval_decode=False)
 
+            # 速度检测器
+            speed_detector = SpeedDetector(...) # TODO 这里要把参数搞一搞
 
-            self.model = YOLOXLONGSHORTV3ODDIL(long_backbone_s, 
-                                          short_backbone_s, 
-                                          backbone_neck_s,
-                                          head_s, 
-                                          backbone_t=backbone_t,
-                                          head_t=head_t,
-                                          merge_form=self.yolox_cfg["merge_form"], 
-                                          in_channels=in_channels, 
-                                          width=self.width,
-                                          with_short_cut=self.yolox_cfg["with_short_cut"],
-                                          long_cfg=self.long_cfg)
+            self.model = YOLOXLONGSHORTV3ODDIL(
+                speed_detector,  # 这个对象需要实现
+                long_backbone_s, 
+                short_backbone_s, 
+                backbone_neck_s,
+                head_s, 
+                backbone_t=backbone_t,
+                head_t=head_t,
+                merge_form=self.yolox_cfg["merge_form"], 
+                in_channels=in_channels, 
+                width=self.width,
+                with_short_cut=self.yolox_cfg["with_short_cut"],
+                long_cfg=self.long_cfg
+            )
 
             # self.model = YOLOXODDIL(backbone_s, head_s, backbone_t, head_t, 
             #     coef_cfg=self.coef_cfg, dil_neck_weight=0.5, still_teacher=False)
@@ -180,6 +201,7 @@ class Exp(MyExp):
                                           mixup_prob=self.mixup_prob,
                                         )
 
+        # 从这行开始往下到函数末尾都和streamyolo相比没有改动
         self.dataset = dataset
 
         if is_distributed:
@@ -220,6 +242,7 @@ class Exp(MyExp):
             long_cfg=self.long_cfg,
         )
 
+        # 从这行开始往下到函数末尾都和streamyolo相比没有改动
         if is_distributed:
             batch_size = batch_size // dist.get_world_size()
             sampler = torch.utils.data.distributed.DistributedSampler(valdataset, shuffle=False)
@@ -258,6 +281,7 @@ class Exp(MyExp):
         scale_y = tsize[0] / self.input_size[0]
         scale_x = tsize[1] / self.input_size[1]
         if scale_x != 1 or scale_y != 1:
+            # 这里改了一点，可能是分支结构导致input存在多个子项
             inputs[0] = nn.functional.interpolate(
                 inputs[0], size=tsize, mode="bilinear", align_corners=False
             )
@@ -286,15 +310,18 @@ class Exp(MyExp):
         return evaluator
 
 
+    # 这个函数不用改
     def get_trainer(self, args):
         from exps.train_utils.longshort_dil_trainer import Trainer
         trainer = Trainer(self, args)
         # NOTE: trainer shouldn't be an attribute of exp object
         return trainer
 
+    # 这个函数不用改
     def eval(self, model, evaluator, is_distributed, half=False):
         return evaluator.evaluate(model, is_distributed, half)
 
+    # 这个是新增的函数
     def get_optimizer(self, batch_size, ignore_keys=None):
         if "optimizer" not in self.__dict__:
             ignore_keys = ignore_keys if ignore_keys is not None else []

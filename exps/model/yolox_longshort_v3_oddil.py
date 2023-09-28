@@ -22,6 +22,7 @@ class YOLOXLONGSHORTV3ODDIL(nn.Module):
 
     def __init__(
         self, 
+        speed_detector: nn.Module,  # 环境速度检测器
         long_backbone=None, 
         short_backbone=None, 
         backbone_neck=None,
@@ -54,6 +55,7 @@ class YOLOXLONGSHORTV3ODDIL(nn.Module):
             head = TALHead(20)
 
         self.dil_loc = dil_loc 
+        self.speed_detector = speed_detector
         self.long_backbone = long_backbone
         self.short_backbone = short_backbone
         self.backbone = backbone_neck
@@ -123,23 +125,31 @@ class YOLOXLONGSHORTV3ODDIL(nn.Module):
                         act=act,
                     )
 
-        #
+    def select_long_backbone_by_speed_score(self, x): # 通过速度评分选择具体用哪一个long_backbone
+        if self.long_backbone is None:
+            return None
+        elif isinstance(self.long_backbone, list):
+            speed_score = self.speed_detector(x) # 通过x，即多帧的结果计算得到速度评分
+            n = int(speed_score * len(self.long_backbone))
+            return self.long_backbone[n]
+
     def forward(self, x, targets=None, buffer=None, mode='off_pipe'):
         # fpn output content features of [dark3, dark4, dark5]
         assert mode in ['off_pipe', 'on_pipe']
         outputs = dict()
+        long_backbone = self.select_long_backbone_by_speed_score(x)
         if mode == 'off_pipe':
             if self.training:
                 # import pdb; pdb.set_trace()
                 # x[0] 0:3 channel 是t帧， 3:6 是t+1帧
                 short_fpn_outs, rurrent_pan_outs = self.short_backbone(x[0][:,:-3,...], buffer=buffer, mode='off_pipe', backbone_neck=self.backbone)
-                long_fpn_outs = self.long_backbone(x[1], buffer=buffer, mode='off_pipe', backbone_neck=self.backbone) if self.long_backbone is not None else None
+                long_fpn_outs = long_backbone(x[1], buffer=buffer, mode='off_pipe', backbone_neck=self.backbone) if long_backbone is not None else None
                 fpn_outs_t = self.backbone_t(x[0][:,-3:,...], buffer=buffer, mode='off_pipe')
             else:
                 short_fpn_outs, rurrent_pan_outs = self.short_backbone(x[0], buffer=buffer, mode='off_pipe', backbone_neck=self.backbone)
-                long_fpn_outs = self.long_backbone(x[1], buffer=buffer, mode='off_pipe', backbone_neck=self.backbone) if self.long_backbone is not None else None
+                long_fpn_outs = long_backbone(x[1], buffer=buffer, mode='off_pipe', backbone_neck=self.backbone) if long_backbone is not None else None
             if not self.with_short_cut:
-                if self.long_backbone is None:
+                if long_backbone is None:
                     fpn_outs = short_fpn_outs
                 else:
                     if self.merge_form == "add":
@@ -162,7 +172,7 @@ class YOLOXLONGSHORTV3ODDIL(nn.Module):
                     else:
                         raise Exception(f'merge_form must be in ["add", "concat"]')
             else:
-                if self.long_backbone is None:
+                if long_backbone is None:
                     fpn_outs = [x + y for x, y in zip(short_fpn_outs, rurrent_pan_outs)]
                 else:
                     if self.merge_form == "add":
