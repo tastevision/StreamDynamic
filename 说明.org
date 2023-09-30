@@ -1,3 +1,42 @@
 * 说明
+:properties:
+:custom_id: 1ab9c0a3e0e3fc34b9d9347372ef61f0
+:id: 1ab9c0a3e0e3fc34b9d9347372ef61f0
+:date: 2023-09-28 21:04:43 周四
+:end:
 
 在本项目安装的过程中，因为CUDA版本和MMCV必须安装的要求，不得不为系统重新安装了一个cuda-11.1.0，相关安装指令在 =./install_cuda.sh= 中
+
+指令在这里可以查到：[[https://developer.nvidia.com/cuda-11.1.0-download-archive?target_os=Linux&target_arch=x86_64&target_distro=Ubuntu&target_version=2004&target_type=deblocal]]，记得要对应好系统
+
+在安装完成cuda之后，重启一下机器，再安装mmcv-full
+
+#+name: 13298048d06c6527e858b873c8bee0ca
+#+begin_src shell
+pip install mmcv-full==1.1.5 -f https://download.openmmlab.com/mmcv/dist/cu110/torch1.7.0/index.htm
+#+end_src
+
+不行，考虑直接编译
+
+[[https://mmcv.readthedocs.io/zh_CN/latest/get_started/build.html]]
+
+#+name: d7c8322050cfc2d27d4d75c95059a28f
+#+begin_src shell
+git clone https://github.com/open-mmlab/mmcv.git
+cd mmcv
+pip install -r requirements/optional.txt
+pip install -e . -v
+#+end_src
+
+记住，一定要记住，只有正确的源码编译才可以解决问题
+
+目前可行的版本：cuda-12.2（通过nvidia源码安装）+ mmcv-full 源码编译
+
+要记住，在编译之前需要在 =~/.bashrc= 中添加 =CUDA_HOME= 变量
+
+#+name: b36495def57daadda669b76af6614cfb
+#+begin_src shell
+  export CUDA_HOME=/usr/local/cuda-12
+#+end_src
+
+在写入之后，记得一定要 =source ~/.bashrc=

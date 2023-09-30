@@ -132,7 +132,7 @@ class Exp(MyExp):
                                 ignore_thr=0.5, ignore_value=1.5, eval_decode=False)
 
             # 速度检测器
-            speed_detector = SpeedDetector(...) # TODO 这里要把参数搞一搞
+            speed_detector = SpeedDetector() # TODO 这里要把参数搞一搞
 
             self.model = YOLOXLONGSHORTV3ODDIL(
                 speed_detector,  # 这个对象需要实现

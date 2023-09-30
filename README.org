@@ -138,3 +138,38 @@ exp 来自 =from yolox.exp import get_exp= ，是 yolox 包中定义的实验框
                       out_channels=[((21, 42, 85), 3), ],
                   )
 #+end_src
+
+选择的方式是直接定义一组历史帧处理分支：
+
+#+name: 0c160c080d054ae006e34d5aa6394868
+#+begin_src python
+  self.long_cfg = [
+      dict(
+          frame_num=fn,
+          delta=1,
+          with_short_cut=False,
+          include_current_frame=False,
+          out_channels=[((21, 42, 85), 3), ],
+      ) for fn in [1, 2, 3, 4] # 在这里定义需要纳入计算的历史帧
+  ]
+#+end_src
+
+后面在 =get_model= 函数中，初始化一组特征处理模型：
+
+#+name: a822d8f62d58ed15bccf5b8f4f2d1f6f
+#+begin_src python
+  long_backbone_s = [
+      DFPPAFPNLONGV3(
+          self.depth,
+          self.width,
+          in_channels=in_channels,
+          frame_num=self.long_cfg[i]["frame_num"],
+          with_short_cut=self.long_cfg[i]["with_short_cut"],
+          out_channels=self.long_cfg[i]["out_channels"]
+      ) for i in range(len(self.long_cfg))
+  ]
+#+end_src
+
+之后，再定义一个速度检测器，它输入的是多个帧，输出是一个评分，说明当前的时刻是什么速度
+
+这里就存在很多问题了，比如说，怎么约束？怎么训练各个分支？

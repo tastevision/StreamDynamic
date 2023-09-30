@@ -50,7 +50,7 @@ class YOLOXLONGSHORTV3ODDIL(nn.Module):
         """
         super().__init__()
         if short_backbone is None:
-            short_backbone = DFPPAFPNSHORTV2()
+            short_backbone = DFPPAFPNSHORT()
         if head is None:
             head = TALHead(20)
 
