@@ -1,4 +1,4 @@
-* 项目说明
+* TODO 项目说明
 :properties:
 :custom_id: 6264cdb993a3e7bc1dc9d7487dd2fe6f
 :id: 6264cdb993a3e7bc1dc9d7487dd2fe6f
@@ -173,3 +173,257 @@ exp 来自 =from yolox.exp import get_exp= ，是 yolox 包中定义的实验框
 之后，再定义一个速度检测器，它输入的是多个帧，输出是一个评分，说明当前的时刻是什么速度
 
 这里就存在很多问题了，比如说，怎么约束？怎么训练各个分支？
+
+** Model 的实现过程
+:properties:
+:custom_id: 201ce23e51aa377483933d6f0856d62c
+:id: 201ce23e51aa377483933d6f0856d62c
+:date: 2023-10-03 16:26:01 周二
+:end:
+
+*** YOLOX
+:properties:
+:custom_id: 0f123fbb4bd67a02d433556cff4bcbef
+:id: 0f123fbb4bd67a02d433556cff4bcbef
+:date: 2023-10-03 17:07:38 周二
+:end:
+
+模型在实现过程中参照的主结构实际上是 yolox，在 =./exps/model/yolox.py= 中定义了它的实际结构
+
+#+name: b41f22a115c7eac9cdbb23d5e12ee986
+#+begin_src python
+  class YOLOX(nn.Module):
+      def __init__(self, backbone=None, head=None):
+          super().__init__()
+          if backbone is None:
+              backbone = DFPPAFPN() # 这里是默认的backbone
+          if head is None:
+              head = TALHead(20) # 这里是默认的head
+          self.backbone = backbone
+          self.head = head
+          # 从这里可以看到，yolox的主结构是很简洁的，只有backbone和head两个部分
+
+      def forward(self,
+                  x,                 # 输入
+                  targets=None,      # 标签
+                  buffer=None,       # 缓冲区
+                  mode='off_pipe',   # 模式，可以分为离线和在线两种
+                  ):
+          assert mode in {'off_pipe', 'on_pipe'}
+          if mode == 'off_pipe': # 离线模式下的情况
+              fpn_outs = self.backbone(x, buffer=buffer, mode=mode)
+              if self.training:
+                  assert targets is not None
+                  # 离线模式+训练情况下，返回多个损失
+                  loss, iou_loss, conf_loss, cls_loss, l1_loss, num_fg = self.head(fpn_outs, targets, x)
+                  outputs = {
+                      "total_loss": loss,
+                      "iou_loss": iou_loss,
+                      "l1_loss": l1_loss,
+                      "conf_loss": conf_loss,
+                      "cls_loss": cls_loss,
+                      "num_fg": num_fg,
+                  }
+              else:
+                  outputs = self.head(fpn_outs)
+              return outputs
+          elif mode == 'on_pipe': # 在线模式下的情况，很简单，就是一个backbone加一个head
+              fpn_outs, buffer_ = self.backbone(x, buffer=buffer, mode=mode)
+              outputs = self.head(fpn_outs)
+              return outputs, buffer_
+#+end_src
+
+我们这里将 =forward= 函数中有关离线＋训练情况下的代码去掉，可以看到，离线情况下是不返回 =buffer_= 的，而在线情况下需要返回
+
+这个 =buffer_= 是由 =backbone= 返回的， =mode= 的区别也是在这里出现了不同
+
+*** Longshort path 的实现
+:properties:
+:custom_id: 27cf2827ace4b0bc4a326faabc0f5aa0
+:id: 27cf2827ace4b0bc4a326faabc0f5aa0
+:date: 2023-10-03 19:47:11 周二
+:end:
+
+在 DAMO-Streamnet 中，这里同时新增了蒸馏的过程和 longshortnet 中的多个历史帧的连接过程
+
+#+CAPTION:
+#+ATTR_ORG: :width 300
+#+NAME: 94a9cfbd52bcbfc8a58e046494d8c556
+[[file:./images/screenshot-LNOELtoB.png]]
+
+上面是 Longshortnet 中的核心结构，这里的 short path 是当前帧的输入，而 long path 是多个历史帧的输入
+
+在 DAMO-StreamNet 中是没有实现在线检测这块内容的，这从源码 =./exps/model/yolox_longshort_v3_dil.py= 中可以看到
+
+#+name: 0425ecf9631269426589f18d2069c43d
+#+begin_src python
+  class YOLOXLONGSHORTV3DIL(nn.Module):
+      # ...
+
+      def forward(self, x, targets=None, buffer=None, mode='off_pipe'):
+          # fpn output content features of [dark3, dark4, dark5]
+          # ...
+          elif mode == 'on_pipe':
+              fpn_outs, buffer_ = self.backbone(x,  buffer=buffer, mode='on_pipe')
+              outputs = self.head(fpn_outs)
+              return outputs, buffer_
+#+end_src
+
+如果要实现同等的 longshort path 过程，在线模式下不能只用一个输入直接计算的
+
+这里我们来看一下离线部分的代码是如何实现的，即 =YOLOXLONGSHORTV3DIL= 类的 =forward= 函数
+
+#+name: 52f93185c59469d1ddd66d7b636aac15
+#+begin_src python
+  def forward(self, x, target=None, buffer=None, mode='off_pipe'):
+      assert mode in {'off_pipe', 'on_pipe'}
+      if mode == 'off_pipe': # 离线检测
+          if self.training:
+              ...
+          else:
+              ...
+
+          if not self.with_short_cut:
+              ...
+          else:
+              ...
+
+          if self.training:
+              ...
+          else:
+              outputs = self.head(fpn_outs)
+
+          return outputs
+
+      elif mode == 'on_pipe': # 在线检测
+          fpn_outs, buffer_ = self.backbone(x,  buffer=buffer, mode=mode)
+          outputs = self.head(fpn_outs)
+          return outputs, buffer_
+#+end_src
+
+对比前面的[[id:0f123fbb4bd67a02d433556cff4bcbef][YOLOX]]类，这个类的 =off_pipe= 模式中的行为复杂多了，训练时和测试时的不同不只体现在 =head= 的计算上，在 =backbone= 的计算上也是不同的，下面把 =off_pipe= 下的内容放大来看一下
+
+第一步，先是特征提取过程，在 DAMO-Streamnet 中，teacher 网络在非训练情况下是不需要的，所以存在计算过程的差异
+
+#+name: 015753e92ff5ef2b14e2fe2e82dac2c2
+#+begin_src python
+  if self.training:
+      short_fpn_outs, rurrent_pan_outs = self.short_backbone(
+          x[0][:, :-3, ...], buffer=buffer, mode=mode, backbone_neck=self.backbone
+      ) # short path
+      fpn_outs_t = self.backbone_t(x[0][:, -3:, ...], buffer=buffer, mode=mode) # teacher网络的特征输出
+  else:
+      # 在非训练情况下，teacher网络就不需要了
+      short_fpn_outs, rurrent_pan_outs = self.short_backbone(
+          x[0], buffer=buffer, mode='off_pipe', backbone_neck=self.backbone
+      ) # short path
+
+  # 这里long path的计算不管是否训练都是一样的，可以提出来
+  long_fpn_outs = self.long_backbone(
+      x[1], buffer=buffer, mode=mode, backbone_neck=self.backbone
+  ) if self.long_backbone is not None else None # long path
+#+end_src
+
+之后是特征融合，在融合的时候，存在几种不同的情况（and, concat, pure_concat 和 long_fusion）
+
+#+name: 2902dc09320d298d6c0961ff732d6374
+#+begin_src python
+  if not self.with_short_cut:
+      if self.long_backbone is None:
+          fpn_outs = short_fpn_outs
+      else:
+          if self.merge_form == "add":
+              fpn_outs = [x + y for x, y in zip(short_fpn_outs, long_fpn_outs)]
+          elif self.merge_form == "concat":
+              fpn_outs_2 = torch.cat([self.jian2(short_fpn_outs[0]), self.jian2(long_fpn_outs[0])], dim=1)
+              fpn_outs_1 = torch.cat([self.jian1(short_fpn_outs[1]), self.jian1(long_fpn_outs[1])], dim=1)
+              fpn_outs_0 = torch.cat([self.jian0(short_fpn_outs[2]), self.jian0(long_fpn_outs[2])], dim=1)
+              fpn_outs = (fpn_outs_2, fpn_outs_1, fpn_outs_0)
+          elif self.merge_form == "pure_concat":
+              fpn_outs_2 = torch.cat([short_fpn_outs[0], long_fpn_outs[0]], dim=1)
+              fpn_outs_1 = torch.cat([short_fpn_outs[1], long_fpn_outs[1]], dim=1)
+              fpn_outs_0 = torch.cat([short_fpn_outs[2], long_fpn_outs[2]], dim=1)
+              fpn_outs = (fpn_outs_2, fpn_outs_1, fpn_outs_0)
+          elif self.merge_form == "long_fusion":
+              fpn_outs_2 = torch.cat([short_fpn_outs[0], self.jian2(long_fpn_outs[0])], dim=1)
+              fpn_outs_1 = torch.cat([short_fpn_outs[1], self.jian1(long_fpn_outs[1])], dim=1)
+              fpn_outs_0 = torch.cat([short_fpn_outs[2], self.jian0(long_fpn_outs[2])], dim=1)
+              fpn_outs = (fpn_outs_2, fpn_outs_1, fpn_outs_0)
+          else:
+              raise Exception(f"merge_form must be in ['add', 'concat', 'pure_concat', 'long_fusion']")
+  else:
+      if self.long_backbone is None:
+          fpn_outs = [x + y for x, y in zip(short_fpn_outs, rurrent_pan_outs)]
+      else:
+          if self.merge_form == "add":
+              fpn_outs = [x + y + z for x, y, z in zip(short_fpn_outs, long_fpn_outs, rurrent_pan_outs)]
+          elif self.merge_form == "concat":
+              fpn_outs_2 = torch.cat([self.jian2(short_fpn_outs[0]), self.jian2(long_fpn_outs[0])], dim=1)
+              fpn_outs_1 = torch.cat([self.jian1(short_fpn_outs[1]), self.jian1(long_fpn_outs[1])], dim=1)
+              fpn_outs_0 = torch.cat([self.jian0(short_fpn_outs[2]), self.jian0(long_fpn_outs[2])], dim=1)
+              fpn_outs = (fpn_outs_2, fpn_outs_1, fpn_outs_0)
+              fpn_outs = [x + y for x, y in zip(fpn_outs, rurrent_pan_outs)]
+          elif self.merge_form == "pure_concat":
+              fpn_outs_2 = torch.cat([short_fpn_outs[0], long_fpn_outs[0]], dim=1)
+              fpn_outs_1 = torch.cat([short_fpn_outs[1], long_fpn_outs[1]], dim=1)
+              fpn_outs_0 = torch.cat([short_fpn_outs[2], long_fpn_outs[2]], dim=1)
+              fpn_outs = (fpn_outs_2, fpn_outs_1, fpn_outs_0)
+              fpn_outs = [x + y for x, y in zip(fpn_outs, rurrent_pan_outs)]
+          elif self.merge_form == "long_fusion":
+              fpn_outs_2 = torch.cat([short_fpn_outs[0], self.jian2(long_fpn_outs[0])], dim=1)
+              fpn_outs_1 = torch.cat([short_fpn_outs[1], self.jian1(long_fpn_outs[1])], dim=1)
+              fpn_outs_0 = torch.cat([short_fpn_outs[2], self.jian0(long_fpn_outs[2])], dim=1)
+              fpn_outs = (fpn_outs_2, fpn_outs_1, fpn_outs_0)
+              fpn_outs = [x + y for x, y in zip(fpn_outs, rurrent_pan_outs)]
+          else:
+              raise Exception(f"merge_form must be in ['add', 'concat', 'pure_concat', 'long_fusion']")
+#+end_src
+
+最后，是 head 部分的计算
+
+#+name: 077f9e2d7922f12146052a36f4266bea
+#+begin_src python
+  if self.training: # 在训练的时候，涉及到损失的计算，由于加入了蒸馏学习过程，损失项变多了
+      assert targets is not None
+      (loss, iou_loss, conf_loss, cls_loss, l1_loss, num_fg), reg_outputs, obj_outputs, cls_outputs = self.head(
+           fpn_outs, targets, x
+      )
+      reg_outputs_t, obj_outputs_t, cls_outputs_t = self.head_t(fpn_outs_t)
+      reg_dil_losses = []
+      cls_dil_losses = []
+      obj_dil_losses = []
+      for i in range(len(reg_outputs)):
+          cur_loss = self.dil_loss(reg_outputs[i], reg_outputs_t[i])
+          reg_dil_losses.append(cur_loss)
+          reg_dil_loss = self.reg_coef * (torch.sum(torch.stack(reg_dil_losses)) / self._get_tensors_numel(reg_outputs))
+      for i in range(len(cls_outputs)):
+          cur_loss = self.dil_loss(cls_outputs[i], cls_outputs_t[i])
+          cls_dil_losses.append(cur_loss)
+          cls_dil_loss = self.cls_coef * (torch.sum(torch.stack(cls_dil_losses)) / self._get_tensors_numel(cls_outputs))
+      for i in range(len(obj_outputs)):
+          cur_loss = self.dil_loss(obj_outputs[i], obj_outputs_t[i])
+          obj_dil_losses.append(cur_loss)
+          obj_dil_loss = self.obj_coef * (torch.sum(torch.stack(obj_dil_losses)) / self._get_tensors_numel(obj_outputs))
+
+      dil_loss = self.dil_loss_coef * (reg_dil_loss + cls_dil_loss + obj_dil_loss)
+      loss = self.det_loss_coef * loss
+      total_loss = dil_loss + loss
+
+      outputs = {
+          "total_loss": total_loss,
+          "det_loss": loss,
+          "iou_loss": iou_loss,
+          "l1_loss": l1_loss,
+          "conf_loss": conf_loss,
+          "cls_loss": cls_loss,
+          "dil_loss": dil_loss,
+          "reg_dil_loss": reg_dil_loss,
+          "cls_dil_loss": cls_dil_loss,
+          "obj_dil_loss": obj_dil_loss,
+          "num_fg": num_fg,
+      }
+  else:
+      outputs = self.head(fpn_outs) # 非训练的时候，直接计算并输出就可以了
+
+  return outputs
+#+end_src

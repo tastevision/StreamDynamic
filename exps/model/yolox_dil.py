@@ -23,7 +23,7 @@ class YOLOXDIL(nn.Module):
         self.head = head_s
         self.backbone_t = backbone_t # teacher model
         self.head_t = head_t
-        self._freeze_teacher_model()
+        self._freeze_teacher_model()    # 在这里freeze掉teacher网络
         self._set_eval_teacher_model()
         self.dil_loss = nn.MSELoss(reduction='sum')
         coef_cfg = coef_cfg if coef_cfg is not None else dict()
