@@ -1,2 +1,2 @@
 root=~/project/StreamDynamic
-rsync -avzz $root lab_pc:/home/taster/project/ --exclude-from=$root/exclude.txt
+rsync -avzz $root yb-s11:/home/xiang.huang/project/ --exclude-from=$root/exclude.txt
