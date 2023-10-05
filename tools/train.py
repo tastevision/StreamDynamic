@@ -45,6 +45,7 @@ def make_parser():
         "--resume", default=False, action="store_true", help="resume training"
     )
     parser.add_argument("-c", "--ckpt", default=None, type=str, help="checkpoint file")
+    parser.add_argument("-t", "--teacher_ckpt", default=None, type=str, help="checkpoint file of teacher model")
     parser.add_argument(
         "-e",
         "--start_epoch",
@@ -88,12 +89,6 @@ def make_parser():
         default="tensorboard"
     )
     parser.add_argument(
-        "--del_history_ckpt",
-        default=False,
-        action="store_true",
-        help="Whether to save the history ckpt",
-    )
-    parser.add_argument(
         "opts",
         help="Modify config options using the command-line",
         default=None,
@@ -131,7 +126,6 @@ if __name__ == "__main__":
 
     if not args.experiment_name:
         args.experiment_name = exp.exp_name
-    exp.save_history_ckpt = not args.del_history_ckpt
 
     num_gpu = get_num_devices() if args.devices is None else args.devices
     assert num_gpu <= get_num_devices()

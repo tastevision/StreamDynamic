@@ -100,6 +100,13 @@ class Exp(MyExp):
                     out_channels=self.long_cfg[i]["out_channels"]
                 ) for i in range(len(self.long_cfg))
             ]
+            long_backbone_s = (DFPPAFPNLONGV3(self.depth, 
+                                            self.width, 
+                                            in_channels=in_channels, 
+                                            frame_num=self.long_cfg["frame_num"],
+                                            with_short_cut=self.long_cfg["with_short_cut"],
+                                            out_channels=self.long_cfg["out_channels"])
+                            if self.long_cfg["frame_num"] != 0 else None)
             short_backbone_s = DFPPAFPNSHORTV3(
                 self.depth, 
                 self.width, 
