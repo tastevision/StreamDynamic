@@ -115,7 +115,7 @@ def main(exp: Exp, args):
     cudnn.benchmark = True
 
     trainer = exp.get_trainer(args)
-    trainer.train()
+    trainer.train() # 模型在这里完成了在gpu上的加载，具体定义在 yolox/core/trainer.py
 
 
 if __name__ == "__main__":

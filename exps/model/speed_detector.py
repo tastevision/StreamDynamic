@@ -9,7 +9,7 @@ class SpeedDetector(nn.Module):
     速度检测器
     """
     def __init__(self):
-        pass
+        super().__init__()
 
     def forward(self, x):
         """

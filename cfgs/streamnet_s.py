@@ -50,13 +50,20 @@ class Exp(MyExp):
                 delta=1,
                 with_short_cut=False,
                 include_current_frame=False,
-                out_channels=[((21, 42, 85), 3), ],
+                out_channels=[((21, 42, 85), fn), ],
             ) for fn in [1, 2, 3, 4]
         ]
+
+        # 找到frame_num最大的那个项
+        self.longest_long_cfg = self.long_cfg[0]
+        for item in self.long_cfg:
+            if item["frame_num"] > self.longest_long_cfg["frame_num"]:
+                self.longest_long_cfg = item
+
         self.yolox_cfg = dict(
-                            merge_form="long_fusion",
-                            with_short_cut=True,
-                        )
+            merge_form="long_fusion",
+            with_short_cut=True,
+        )
         # 这里的neck也就是backbone，特征提取器，在long branch和short branch中，这个backbone是共享的
         self.neck_cfg = {
             'depth': 1.0,
@@ -100,13 +107,6 @@ class Exp(MyExp):
                     out_channels=self.long_cfg[i]["out_channels"]
                 ) for i in range(len(self.long_cfg))
             ]
-            long_backbone_s = (DFPPAFPNLONGV3(self.depth, 
-                                            self.width, 
-                                            in_channels=in_channels, 
-                                            frame_num=self.long_cfg["frame_num"],
-                                            with_short_cut=self.long_cfg["with_short_cut"],
-                                            out_channels=self.long_cfg["out_channels"])
-                            if self.long_cfg["frame_num"] != 0 else None)
             short_backbone_s = DFPPAFPNSHORTV3(
                 self.depth, 
                 self.width, 
@@ -180,33 +180,38 @@ class Exp(MyExp):
             json_file=self.train_ann,
             name='train',
             img_size=self.input_size,
-            preproc=LongShortTrainTransformDil(max_labels=50, 
-                                               hsv=False, 
-                                               flip=True, 
-                                               short_frame_num=self.short_cfg["frame_num"], 
-                                               long_frame_num=self.long_cfg["frame_num"]),
+            preproc=LongShortTrainTransformDil(
+                max_labels=50, 
+                hsv=False, 
+                flip=True, 
+                short_frame_num=self.short_cfg["frame_num"], 
+                long_frame_num=self.longest_long_cfg["frame_num"], # 在这里只要最长的那个frame_num
+            ),
             cache=cache_img,
             short_cfg=self.short_cfg,
-            long_cfg=self.long_cfg,
+            long_cfg=self.longest_long_cfg, # 依旧引入最长的那个long_cfg
         )
 
-        dataset = LongShortMosaicDetectionDil(dataset,
-                                          mosaic=not no_aug,
-                                          img_size=self.input_size,
-                                          preproc=LongShortTrainTransformDil(max_labels=120, 
-                                                                             hsv=False, 
-                                                                             flip=True, 
-                                                                             short_frame_num=self.short_cfg["frame_num"], 
-                                                                             long_frame_num=self.long_cfg["frame_num"]),
-                                          degrees=self.degrees,
-                                          translate=self.translate,
-                                          scale=self.mosaic_scale,
-                                          shear=self.shear,
-                                          perspective=0.0,
-                                          enable_mixup=self.enable_mixup,
-                                          mosaic_prob=self.mosaic_prob,
-                                          mixup_prob=self.mixup_prob,
-                                        )
+        dataset = LongShortMosaicDetectionDil(
+            dataset,
+            mosaic=not no_aug,
+            img_size=self.input_size,
+            preproc=LongShortTrainTransformDil(
+                max_labels=120, 
+                hsv=False, 
+                flip=True, 
+                short_frame_num=self.short_cfg["frame_num"], 
+                long_frame_num=self.longest_long_cfg["frame_num"],
+            ),
+            degrees=self.degrees,
+            translate=self.translate,
+            scale=self.mosaic_scale,
+            shear=self.shear,
+            perspective=0.0,
+            enable_mixup=self.enable_mixup,
+            mosaic_prob=self.mosaic_prob,
+            mixup_prob=self.mixup_prob,
+        )
 
         # 从这行开始往下到函数末尾都和streamyolo相比没有改动
         self.dataset = dataset
@@ -220,7 +225,8 @@ class Exp(MyExp):
             sampler=sampler,
             batch_size=batch_size,
             drop_last=False,
-            mosaic=not no_aug)
+            mosaic=not no_aug,
+        )
 
         dataloader_kwargs = {"num_workers": self.data_num_workers, "pin_memory": True}
         dataloader_kwargs["batch_sampler"] = batch_sampler
@@ -243,10 +249,12 @@ class Exp(MyExp):
             json_file='val.json',
             name='val',
             img_size=self.test_size,
-            preproc=LongShortValTransform(short_frame_num=self.short_cfg["frame_num"],
-                                          long_frame_num=self.long_cfg["frame_num"]),
+            preproc=LongShortValTransform(
+                short_frame_num=self.short_cfg["frame_num"],
+                long_frame_num=self.longest_long_cfg["frame_num"],
+            ),
             short_cfg=self.short_cfg,
-            long_cfg=self.long_cfg,
+            long_cfg=self.longest_long_cfg,
         )
 
         # 从这行开始往下到函数末尾都和streamyolo相比没有改动

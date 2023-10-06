@@ -145,6 +145,16 @@ class Trainer:
         # logger.info(
         #     "Model Summary: {}".format(get_model_info(model, self.exp.test_size))
         # )
+        # 需要在这里特别地将model.long_backbone加载到gpu上
+        for m in model.long_backbone:
+            m.to(self.device)
+        if isinstance(model.jian0, list):
+            for m in model.jian0:
+                m.to(self.device)
+            for m in model.jian1:
+                m.to(self.device)
+            for m in model.jian2:
+                m.to(self.device)
         model.to(self.device)
 
         # solver related init

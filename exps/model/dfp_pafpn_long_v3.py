@@ -46,38 +46,41 @@ class DFPPAFPNLONGV3(nn.Module):
         Conv = DWConv if depthwise else BaseConv
 
         for i in range(self.conv_group_num):
-            setattr(self,
-                    f"group_{i}_jian2",
-                    Conv(
-                        in_channels=int(in_channels[0] * width),
-                        out_channels=self.out_channels[i][0][0],
-                        ksize=1,
-                        stride=1,
-                        act=act,
-                    )
+            setattr(
+                self,
+                f"group_{i}_jian2",
+                Conv(
+                    in_channels=int(in_channels[0] * width),
+                    out_channels=self.out_channels[i][0][0],
+                    ksize=1,
+                    stride=1,
+                    act=act,
                 )
+            )
 
-            setattr(self,
-                    f"group_{i}_jian1",
-                    Conv(
-                        in_channels=int(in_channels[1] * width),
-                        out_channels=self.out_channels[i][0][1],
-                        ksize=1,
-                        stride=1,
-                        act=act,
-                    )
+            setattr(
+                self,
+                f"group_{i}_jian1",
+                Conv(
+                    in_channels=int(in_channels[1] * width),
+                    out_channels=self.out_channels[i][0][1],
+                    ksize=1,
+                    stride=1,
+                    act=act,
                 )
+            )
 
-            setattr(self,
-                    f"group_{i}_jian0",
-                    Conv(
-                        in_channels=int(in_channels[2] * width),
-                        out_channels=self.out_channels[i][0][2],
-                        ksize=1,
-                        stride=1,
-                        act=act,
-                    )
+            setattr(
+                self,
+                f"group_{i}_jian0",
+                Conv(
+                    in_channels=int(in_channels[2] * width),
+                    out_channels=self.out_channels[i][0][2],
+                    ksize=1,
+                    stride=1,
+                    act=act,
                 )
+            )
 
     def off_forward(self, input, backbone_neck):
         """
@@ -87,7 +90,6 @@ class DFPPAFPNLONGV3(nn.Module):
         Returns:
             Tuple[Tensor]: FPN feature.
         """
-
 
         # backbone
         rurrent_pan_out2, rurrent_pan_out1, rurrent_pan_out0 = backbone_neck(torch.split(input, 3, dim=1)[0])
@@ -205,7 +207,6 @@ class DFPPAFPNLONGV3(nn.Module):
 
 
     def forward(self, input, buffer=None, mode='off_pipe', backbone_neck=None): # 这个函数不用看了，和short没区别
-
         if mode=='off_pipe':
             # Glops caculate mode
             if input.size()[1] == 3:
