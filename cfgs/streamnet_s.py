@@ -29,6 +29,9 @@ class Exp(MyExp):
         self.train_ann = 'train.json'
         self.val_ann = 'val.json'
 
+        # 速度检测器的目标尺寸
+        self.speed_detector_target_size = (100, 100)
+
         # 这里的实验名是通过当前文件名直接解析出来的，也可以自定义
         self.exp_name = os.path.split(os.path.realpath(__file__))[1].split(".")[0]
 
@@ -139,7 +142,9 @@ class Exp(MyExp):
                                 ignore_thr=0.5, ignore_value=1.5, eval_decode=False)
 
             # 速度检测器
-            speed_detector = SpeedDetector() # TODO 这里要把参数搞一搞
+            speed_detector = SpeedDetector(
+                target_size=self.speed_detector_target_size
+            )
 
             self.model = YOLOXLONGSHORTV3ODDIL(
                 speed_detector,  # 这个对象需要实现
