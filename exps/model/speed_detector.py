@@ -46,9 +46,11 @@ class SpeedDetector(nn.Module):
         """
         current_frame = x[0][:,:-3,...]  # frame t
         history_frame = x[1][:,:3,...] # history frame
-        
-        # 用x计算出帧间差
-        frame_diff = self.resize(current_frame - history_frame)
+        if current_frame.size() != history_frame.size():
+            frame_diff = self.resize(history_frame)
+        else:
+            # 用x计算出帧间差
+            frame_diff = self.resize(current_frame - history_frame)
         features = self.extractor(frame_diff)
         scores = self.head(features)
         # 之后如果直接分类，那么整个batch中的每一个sample都有一个速度评分，

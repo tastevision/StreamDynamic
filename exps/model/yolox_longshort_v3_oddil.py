@@ -143,6 +143,8 @@ class YOLOXLONGSHORTV3ODDIL(nn.Module):
         speed_score = self.compute_speed_score(x) # 一个0到1之间的数
 
         N = int(len(self.long_cfg) * speed_score) # 选择第几条分支
+        if N >= len(self.long_cfg):
+            N = len(self.long_cfg) - 1
         # 找到当前的frame_num
         frame_num = self.long_cfg[N]['frame_num']
         if self.merge_form == "long_fusion":
@@ -176,9 +178,14 @@ class YOLOXLONGSHORTV3ODDIL(nn.Module):
                     if self.merge_form == "add":
                         fpn_outs = [x + y for x, y in zip(short_fpn_outs, long_fpn_outs)]
                     elif self.merge_form == "concat":
-                        fpn_outs_2 = torch.cat([jian2(short_fpn_outs[0]), jian2(long_fpn_outs[0][0])], dim=1)
-                        fpn_outs_1 = torch.cat([jian1(short_fpn_outs[1]), jian1(long_fpn_outs[0][1])], dim=1)
-                        fpn_outs_0 = torch.cat([jian0(short_fpn_outs[2]), jian0(long_fpn_outs[0][2])], dim=1)
+                        if isinstance(long_fpn_outs[0], tuple):
+                            fpn_outs_2 = torch.cat([jian2(short_fpn_outs[0]), jian2(long_fpn_outs[0][0])], dim=1)
+                            fpn_outs_1 = torch.cat([jian1(short_fpn_outs[1]), jian1(long_fpn_outs[0][1])], dim=1)
+                            fpn_outs_0 = torch.cat([jian0(short_fpn_outs[2]), jian0(long_fpn_outs[0][2])], dim=1)
+                        else:
+                            fpn_outs_2 = torch.cat([jian2(short_fpn_outs[0]), jian2(long_fpn_outs[0])], dim=1)
+                            fpn_outs_1 = torch.cat([jian1(short_fpn_outs[1]), jian1(long_fpn_outs[1])], dim=1)
+                            fpn_outs_0 = torch.cat([jian0(short_fpn_outs[2]), jian0(long_fpn_outs[2])], dim=1)
                         fpn_outs = (fpn_outs_2, fpn_outs_1, fpn_outs_0)
                     elif self.merge_form == "pure_concat":
                         fpn_outs_2 = torch.cat([short_fpn_outs[0], long_fpn_outs[0]], dim=1)
@@ -186,9 +193,14 @@ class YOLOXLONGSHORTV3ODDIL(nn.Module):
                         fpn_outs_0 = torch.cat([short_fpn_outs[2], long_fpn_outs[2]], dim=1)
                         fpn_outs = (fpn_outs_2, fpn_outs_1, fpn_outs_0)
                     elif self.merge_form == "long_fusion":
-                        fpn_outs_2 = torch.cat([short_fpn_outs[0], jian2(long_fpn_outs[0][0])], dim=1)
-                        fpn_outs_1 = torch.cat([short_fpn_outs[1], jian1(long_fpn_outs[0][1])], dim=1)
-                        fpn_outs_0 = torch.cat([short_fpn_outs[2], jian0(long_fpn_outs[0][2])], dim=1)
+                        if isinstance(long_fpn_outs[0], tuple):
+                            fpn_outs_2 = torch.cat([short_fpn_outs[0], jian2(long_fpn_outs[0][0])], dim=1)
+                            fpn_outs_1 = torch.cat([short_fpn_outs[1], jian1(long_fpn_outs[0][1])], dim=1)
+                            fpn_outs_0 = torch.cat([short_fpn_outs[2], jian0(long_fpn_outs[0][2])], dim=1)
+                        else:
+                            fpn_outs_2 = torch.cat([short_fpn_outs[0], jian2(long_fpn_outs[0])], dim=1)
+                            fpn_outs_1 = torch.cat([short_fpn_outs[1], jian1(long_fpn_outs[1])], dim=1)
+                            fpn_outs_0 = torch.cat([short_fpn_outs[2], jian0(long_fpn_outs[2])], dim=1)
                         fpn_outs = (fpn_outs_2, fpn_outs_1, fpn_outs_0)
                     else:
                         raise Exception(f'merge_form must be in ["add", "concat"]')
@@ -199,9 +211,14 @@ class YOLOXLONGSHORTV3ODDIL(nn.Module):
                     if self.merge_form == "add":
                         fpn_outs = [x + y + z for x, y, z in zip(short_fpn_outs, long_fpn_outs, rurrent_pan_outs)]
                     elif self.merge_form == "concat":
-                        fpn_outs_2 = torch.cat([jian2(short_fpn_outs[0]), jian2(long_fpn_outs[0][0])], dim=1)
-                        fpn_outs_1 = torch.cat([jian1(short_fpn_outs[1]), jian1(long_fpn_outs[0][1])], dim=1)
-                        fpn_outs_0 = torch.cat([jian0(short_fpn_outs[2]), jian0(long_fpn_outs[0][2])], dim=1)
+                        if isinstance(long_fpn_outs[0], tuple):
+                            fpn_outs_2 = torch.cat([jian2(short_fpn_outs[0]), jian2(long_fpn_outs[0][0])], dim=1)
+                            fpn_outs_1 = torch.cat([jian1(short_fpn_outs[1]), jian1(long_fpn_outs[0][1])], dim=1)
+                            fpn_outs_0 = torch.cat([jian0(short_fpn_outs[2]), jian0(long_fpn_outs[0][2])], dim=1)
+                        else:
+                            fpn_outs_2 = torch.cat([jian2(short_fpn_outs[0]), jian2(long_fpn_outs[0])], dim=1)
+                            fpn_outs_1 = torch.cat([jian1(short_fpn_outs[1]), jian1(long_fpn_outs[1])], dim=1)
+                            fpn_outs_0 = torch.cat([jian0(short_fpn_outs[2]), jian0(long_fpn_outs[2])], dim=1)
                         fpn_outs = (fpn_outs_2, fpn_outs_1, fpn_outs_0)
                         fpn_outs = [x + y for x, y in zip(fpn_outs, rurrent_pan_outs)]
                     elif self.merge_form == "pure_concat":
@@ -211,9 +228,14 @@ class YOLOXLONGSHORTV3ODDIL(nn.Module):
                         fpn_outs = (fpn_outs_2, fpn_outs_1, fpn_outs_0)
                         fpn_outs = [x + y for x, y in zip(fpn_outs, rurrent_pan_outs)]
                     elif self.merge_form == "long_fusion":
-                        fpn_outs_2 = torch.cat([short_fpn_outs[0], jian2(long_fpn_outs[0][0])], dim=1)
-                        fpn_outs_1 = torch.cat([short_fpn_outs[1], jian1(long_fpn_outs[0][1])], dim=1)
-                        fpn_outs_0 = torch.cat([short_fpn_outs[2], jian0(long_fpn_outs[0][2])], dim=1)
+                        if isinstance(long_fpn_outs[0], tuple):
+                            fpn_outs_2 = torch.cat([short_fpn_outs[0], jian2(long_fpn_outs[0][0])], dim=1)
+                            fpn_outs_1 = torch.cat([short_fpn_outs[1], jian1(long_fpn_outs[0][1])], dim=1)
+                            fpn_outs_0 = torch.cat([short_fpn_outs[2], jian0(long_fpn_outs[0][2])], dim=1)
+                        else:
+                            fpn_outs_2 = torch.cat([short_fpn_outs[0], jian2(long_fpn_outs[0])], dim=1)
+                            fpn_outs_1 = torch.cat([short_fpn_outs[1], jian1(long_fpn_outs[1])], dim=1)
+                            fpn_outs_0 = torch.cat([short_fpn_outs[2], jian0(long_fpn_outs[2])], dim=1)
                         fpn_outs = (fpn_outs_2, fpn_outs_1, fpn_outs_0)
                         fpn_outs = [x + y for x, y in zip(fpn_outs, rurrent_pan_outs)]
                     else:
