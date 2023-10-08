@@ -5,6 +5,7 @@
 
 import torch
 import torch.nn as nn
+import numpy as np
 
 from exps.model.tal_head import TALHead
 from exps.model.dfp_pafpn_long import DFPPAFPNLONG
@@ -142,9 +143,13 @@ class YOLOXLONGSHORTV3ODDIL(nn.Module):
         outputs = dict()
         speed_score = self.compute_speed_score(x) # 一个0到1之间的数
 
-        N = int(len(self.long_cfg) * speed_score) # 选择第几条分支
-        if N >= len(self.long_cfg):
-            N = len(self.long_cfg) - 1
+        if self.training: # 训练时，随机选择一条路径进行训练
+            N = np.random.randint(len(self.long_cfg))
+        else: # 测试时，按照speed_detector给出的结果进行测试
+            N = int(len(self.long_cfg) * speed_score) # 选择第几条分支
+            if N >= len(self.long_cfg):
+                N = len(self.long_cfg) - 1
+
         # 找到当前的frame_num
         frame_num = self.long_cfg[N]['frame_num']
         if self.merge_form == "long_fusion":
@@ -273,6 +278,7 @@ class YOLOXLONGSHORTV3ODDIL(nn.Module):
                     )
 
                     losses = {
+                        "speed_score": speed_score,
                         "total_loss": loss,
                         # "det_loss": loss,
                         "iou_loss": iou_loss,
