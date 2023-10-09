@@ -86,6 +86,8 @@ class SpeedDetector(nn.Module):
         """
         current_frame = x[0][:,:-3,...]  # frame t
         history_frame = x[1][:,:3,...] # history frame
+        if current_frame.size() != history_frame.size():
+            current_frame = x[0]
         current_frame = current_frame / 255.0
         history_frame = history_frame / 255.0
         
@@ -102,9 +104,5 @@ class SpeedDetector(nn.Module):
         # frame_diff[frame_diff > (1 - factor)] = 0
         # frame_diff = (frame_diff - factor) / (1 - 2 * factor)
 
-        if current_frame.size() != history_frame.size():
-            print(1)
-            frame_diff = torch.abs(torch.mean(history_frame - history_frame, dim=(1, 2, 3))) * 50
-        else:
-            frame_diff = torch.abs(torch.mean(current_frame, dim=(1, 2, 3)) - torch.mean(history_frame, dim=(1, 2, 3))) * 50
+        frame_diff = torch.abs(torch.mean(current_frame, dim=(1, 2, 3)) - torch.mean(history_frame, dim=(1, 2, 3))) * 50
         return frame_diff.max()
