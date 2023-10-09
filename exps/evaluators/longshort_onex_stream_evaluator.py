@@ -109,6 +109,7 @@ class LONGSHORT_ONEX_COCOEvaluator:
         model = model.eval()
         if half:
             model = model.half()
+
         ids = []
         data_list = []
         progress_bar = tqdm if is_main_process() else iter

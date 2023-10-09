@@ -145,6 +145,16 @@ class Trainer:
         # logger.info(
         #     "Model Summary: {}".format(get_model_info(model, self.exp.test_size))
         # )
+        # 需要在这里特别地将model.long_backbone加载到gpu上
+        for m in model.long_backbone:
+            m.to(self.device)
+        if isinstance(model.jian0, list):
+            for m in model.jian0:
+                m.to(self.device)
+            for m in model.jian1:
+                m.to(self.device)
+            for m in model.jian2:
+                m.to(self.device)
         model.to(self.device)
 
         # solver related init
@@ -173,7 +183,7 @@ class Trainer:
             occupy_mem(self.local_rank)
 
         if self.is_distributed:
-            model = DDP(model, device_ids=[self.local_rank], broadcast_buffers=False)
+            model = DDP(model, device_ids=[self.local_rank], broadcast_buffers=False, find_unused_parameters=True)
 
         if self.use_model_ema:
             self.ema_model = ModelEMA(model, 0.9998, ignore_keys=self.ignore_keys)
@@ -209,6 +219,9 @@ class Trainer:
                 self.wandb_logger.finish()
 
     def before_epoch(self):
+        if (self.epoch + 1) % self.exp.eval_interval == 0:
+            all_reduce_norm(self.model)
+            self.evaluate_and_save_model()
         logger.info("---> start train epoch{}".format(self.epoch + 1))
 
         if self.epoch + 1 == self.max_epoch - self.exp.no_aug_epochs or self.no_aug:

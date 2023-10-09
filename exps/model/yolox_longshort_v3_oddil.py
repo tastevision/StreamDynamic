@@ -5,6 +5,7 @@
 
 import torch
 import torch.nn as nn
+import numpy as np
 
 from exps.model.tal_head import TALHead
 from exps.model.dfp_pafpn_long import DFPPAFPNLONG
@@ -74,80 +75,107 @@ class YOLOXLONGSHORTV3ODDIL(nn.Module):
         # self.reg_coef = coef_cfg.get("reg_coef", 1.)
         # self.cls_coef = coef_cfg.get("cls_coef", 1.)
         # self.obj_coef = coef_cfg.get("obj_coef", 1.)
+        self.long_cfg = long_cfg
 
         if merge_form == "concat":
             self.jian2 = BaseConv(
-                        in_channels=int(in_channels[0] * width),
-                        out_channels=int(in_channels[0] * width) // 2,
-                        ksize=1,
-                        stride=1,
-                        act=act,
-                    )
+                in_channels=int(in_channels[0] * width),
+                out_channels=int(in_channels[0] * width) // 2,
+                ksize=1,
+                stride=1,
+                act=act,
+            )
 
             self.jian1 = BaseConv(
-                        in_channels=int(in_channels[1] * width),
-                        out_channels=int(in_channels[1] * width) // 2,
-                        ksize=1,
-                        stride=1,
-                        act=act,
-                    )
+                in_channels=int(in_channels[1] * width),
+                out_channels=int(in_channels[1] * width) // 2,
+                ksize=1,
+                stride=1,
+                act=act,
+            )
 
             self.jian0 = BaseConv(
-                        in_channels=int(in_channels[2] * width),
-                        out_channels=int(in_channels[2] * width) // 2,
-                        ksize=1,
-                        stride=1,
-                        act=act,
-                    )
+                in_channels=int(in_channels[2] * width),
+                out_channels=int(in_channels[2] * width) // 2,
+                ksize=1,
+                stride=1,
+                act=act,
+            )
         elif merge_form == "long_fusion":
-            assert long_cfg is not None and "out_channels" in long_cfg
-            self.jian2 = BaseConv(
-                        in_channels=sum([x[0][0]*x[1] for x in long_cfg["out_channels"]]),
-                        out_channels=int(in_channels[0] * width) // 2,
-                        ksize=1,
-                        stride=1,
-                        act=act,
-                    )
+            assert isinstance(self.long_cfg, list) and "out_channels" in self.long_cfg[0]
+            self.jian2 = [
+                BaseConv(
+                    in_channels=sum([x[0][0]*x[1] for x in self.long_cfg[i]["out_channels"]]),
+                    out_channels=int(in_channels[0] * width) // 2,
+                    ksize=1,
+                    stride=1,
+                    act=act,
+                ) for i in range(len(self.long_cfg))
+            ]
 
-            self.jian1 = BaseConv(
-                        in_channels=sum([x[0][1]*x[1] for x in long_cfg["out_channels"]]),
-                        out_channels=int(in_channels[1] * width) // 2,
-                        ksize=1,
-                        stride=1,
-                        act=act,
-                    )
+            self.jian1 = [
+                BaseConv(
+                    in_channels=sum([x[0][1]*x[1] for x in self.long_cfg[i]["out_channels"]]),
+                    out_channels=int(in_channels[1] * width) // 2,
+                    ksize=1,
+                    stride=1,
+                    act=act,
+                ) for i in range(len(self.long_cfg))
+            ]
 
-            self.jian0 = BaseConv(
-                        in_channels=sum([x[0][2]*x[1] for x in long_cfg["out_channels"]]),
-                        out_channels=int(in_channels[2] * width) // 2,
-                        ksize=1,
-                        stride=1,
-                        act=act,
-                    )
+            self.jian0 = [
+                BaseConv(
+                    in_channels=sum([x[0][2]*x[1] for x in self.long_cfg[i]["out_channels"]]),
+                    out_channels=int(in_channels[2] * width) // 2,
+                    ksize=1,
+                    stride=1,
+                    act=act,
+                ) for i in range(len(self.long_cfg))
+            ]
 
-    def select_long_backbone_by_speed_score(self, x): # 通过速度评分选择具体用哪一个long_backbone
-        if self.long_backbone is None:
-            return None
-        elif isinstance(self.long_backbone, list):
-            speed_score = self.speed_detector(x) # 通过x，即多帧的结果计算得到速度评分
-            n = int(speed_score * len(self.long_backbone))
-            return self.long_backbone[n]
+    def compute_speed_score(self, x): # 计算速度评分
+        speed_score = self.speed_detector(x) # 通过x，即多帧的结果计算得到速度评分
+        return speed_score
 
     def forward(self, x, targets=None, buffer=None, mode='off_pipe'):
         # fpn output content features of [dark3, dark4, dark5]
         assert mode in ['off_pipe', 'on_pipe']
         outputs = dict()
-        long_backbone = self.select_long_backbone_by_speed_score(x)
+        speed_score = self.compute_speed_score(x) # 一个0到1之间的数
+
+        if self.training: # 训练时，随机选择一条路径进行训练
+            N = np.random.randint(len(self.long_cfg))
+        else: # 测试时，按照speed_detector给出的结果进行测试
+            N = int(len(self.long_cfg) * speed_score) # 选择第几条分支
+            if N >= len(self.long_cfg):
+                N = len(self.long_cfg) - 1
+
+        # 找到当前的frame_num
+        frame_num = self.long_cfg[N]['frame_num']
+        if self.merge_form == "long_fusion":
+            jian2 = self.jian2[N]
+            jian1 = self.jian1[N]
+            jian0 = self.jian0[N]
+        else:
+            jian2 = self.jian2
+            jian1 = self.jian1
+            jian0 = self.jian0
+
+        if self.long_backbone is None:
+            long_backbone = None
+        elif isinstance(self.long_backbone, list):
+            long_backbone = self.long_backbone[N]
         if mode == 'off_pipe':
             if self.training:
                 # import pdb; pdb.set_trace()
                 # x[0] 0:3 channel 是t帧， 3:6 是t+1帧
                 short_fpn_outs, rurrent_pan_outs = self.short_backbone(x[0][:,:-3,...], buffer=buffer, mode='off_pipe', backbone_neck=self.backbone)
-                long_fpn_outs = long_backbone(x[1], buffer=buffer, mode='off_pipe', backbone_neck=self.backbone) if long_backbone is not None else None
                 fpn_outs_t = self.backbone_t(x[0][:,-3:,...], buffer=buffer, mode='off_pipe')
+                long_fpn_outs = long_backbone(x[1][:,:frame_num*3,...], buffer=buffer, mode='off_pipe', backbone_neck=self.backbone) if long_backbone is not None else None,
             else:
                 short_fpn_outs, rurrent_pan_outs = self.short_backbone(x[0], buffer=buffer, mode='off_pipe', backbone_neck=self.backbone)
-                long_fpn_outs = long_backbone(x[1], buffer=buffer, mode='off_pipe', backbone_neck=self.backbone) if long_backbone is not None else None
+                long_fpn_outs = long_backbone(x[1][:,:frame_num*3,...], buffer=buffer, mode='off_pipe', backbone_neck=self.backbone) if long_backbone is not None else None
+
             if not self.with_short_cut:
                 if long_backbone is None:
                     fpn_outs = short_fpn_outs
@@ -155,9 +183,14 @@ class YOLOXLONGSHORTV3ODDIL(nn.Module):
                     if self.merge_form == "add":
                         fpn_outs = [x + y for x, y in zip(short_fpn_outs, long_fpn_outs)]
                     elif self.merge_form == "concat":
-                        fpn_outs_2 = torch.cat([self.jian2(short_fpn_outs[0]), self.jian2(long_fpn_outs[0])], dim=1)
-                        fpn_outs_1 = torch.cat([self.jian1(short_fpn_outs[1]), self.jian1(long_fpn_outs[1])], dim=1)
-                        fpn_outs_0 = torch.cat([self.jian0(short_fpn_outs[2]), self.jian0(long_fpn_outs[2])], dim=1)
+                        if isinstance(long_fpn_outs[0], tuple):
+                            fpn_outs_2 = torch.cat([jian2(short_fpn_outs[0]), jian2(long_fpn_outs[0][0])], dim=1)
+                            fpn_outs_1 = torch.cat([jian1(short_fpn_outs[1]), jian1(long_fpn_outs[0][1])], dim=1)
+                            fpn_outs_0 = torch.cat([jian0(short_fpn_outs[2]), jian0(long_fpn_outs[0][2])], dim=1)
+                        else:
+                            fpn_outs_2 = torch.cat([jian2(short_fpn_outs[0]), jian2(long_fpn_outs[0])], dim=1)
+                            fpn_outs_1 = torch.cat([jian1(short_fpn_outs[1]), jian1(long_fpn_outs[1])], dim=1)
+                            fpn_outs_0 = torch.cat([jian0(short_fpn_outs[2]), jian0(long_fpn_outs[2])], dim=1)
                         fpn_outs = (fpn_outs_2, fpn_outs_1, fpn_outs_0)
                     elif self.merge_form == "pure_concat":
                         fpn_outs_2 = torch.cat([short_fpn_outs[0], long_fpn_outs[0]], dim=1)
@@ -165,9 +198,14 @@ class YOLOXLONGSHORTV3ODDIL(nn.Module):
                         fpn_outs_0 = torch.cat([short_fpn_outs[2], long_fpn_outs[2]], dim=1)
                         fpn_outs = (fpn_outs_2, fpn_outs_1, fpn_outs_0)
                     elif self.merge_form == "long_fusion":
-                        fpn_outs_2 = torch.cat([short_fpn_outs[0], self.jian2(long_fpn_outs[0])], dim=1)
-                        fpn_outs_1 = torch.cat([short_fpn_outs[1], self.jian1(long_fpn_outs[1])], dim=1)
-                        fpn_outs_0 = torch.cat([short_fpn_outs[2], self.jian0(long_fpn_outs[2])], dim=1)
+                        if isinstance(long_fpn_outs[0], tuple):
+                            fpn_outs_2 = torch.cat([short_fpn_outs[0], jian2(long_fpn_outs[0][0])], dim=1)
+                            fpn_outs_1 = torch.cat([short_fpn_outs[1], jian1(long_fpn_outs[0][1])], dim=1)
+                            fpn_outs_0 = torch.cat([short_fpn_outs[2], jian0(long_fpn_outs[0][2])], dim=1)
+                        else:
+                            fpn_outs_2 = torch.cat([short_fpn_outs[0], jian2(long_fpn_outs[0])], dim=1)
+                            fpn_outs_1 = torch.cat([short_fpn_outs[1], jian1(long_fpn_outs[1])], dim=1)
+                            fpn_outs_0 = torch.cat([short_fpn_outs[2], jian0(long_fpn_outs[2])], dim=1)
                         fpn_outs = (fpn_outs_2, fpn_outs_1, fpn_outs_0)
                     else:
                         raise Exception(f'merge_form must be in ["add", "concat"]')
@@ -178,9 +216,14 @@ class YOLOXLONGSHORTV3ODDIL(nn.Module):
                     if self.merge_form == "add":
                         fpn_outs = [x + y + z for x, y, z in zip(short_fpn_outs, long_fpn_outs, rurrent_pan_outs)]
                     elif self.merge_form == "concat":
-                        fpn_outs_2 = torch.cat([self.jian2(short_fpn_outs[0]), self.jian2(long_fpn_outs[0])], dim=1)
-                        fpn_outs_1 = torch.cat([self.jian1(short_fpn_outs[1]), self.jian1(long_fpn_outs[1])], dim=1)
-                        fpn_outs_0 = torch.cat([self.jian0(short_fpn_outs[2]), self.jian0(long_fpn_outs[2])], dim=1)
+                        if isinstance(long_fpn_outs[0], tuple):
+                            fpn_outs_2 = torch.cat([jian2(short_fpn_outs[0]), jian2(long_fpn_outs[0][0])], dim=1)
+                            fpn_outs_1 = torch.cat([jian1(short_fpn_outs[1]), jian1(long_fpn_outs[0][1])], dim=1)
+                            fpn_outs_0 = torch.cat([jian0(short_fpn_outs[2]), jian0(long_fpn_outs[0][2])], dim=1)
+                        else:
+                            fpn_outs_2 = torch.cat([jian2(short_fpn_outs[0]), jian2(long_fpn_outs[0])], dim=1)
+                            fpn_outs_1 = torch.cat([jian1(short_fpn_outs[1]), jian1(long_fpn_outs[1])], dim=1)
+                            fpn_outs_0 = torch.cat([jian0(short_fpn_outs[2]), jian0(long_fpn_outs[2])], dim=1)
                         fpn_outs = (fpn_outs_2, fpn_outs_1, fpn_outs_0)
                         fpn_outs = [x + y for x, y in zip(fpn_outs, rurrent_pan_outs)]
                     elif self.merge_form == "pure_concat":
@@ -190,9 +233,14 @@ class YOLOXLONGSHORTV3ODDIL(nn.Module):
                         fpn_outs = (fpn_outs_2, fpn_outs_1, fpn_outs_0)
                         fpn_outs = [x + y for x, y in zip(fpn_outs, rurrent_pan_outs)]
                     elif self.merge_form == "long_fusion":
-                        fpn_outs_2 = torch.cat([short_fpn_outs[0], self.jian2(long_fpn_outs[0])], dim=1)
-                        fpn_outs_1 = torch.cat([short_fpn_outs[1], self.jian1(long_fpn_outs[1])], dim=1)
-                        fpn_outs_0 = torch.cat([short_fpn_outs[2], self.jian0(long_fpn_outs[2])], dim=1)
+                        if isinstance(long_fpn_outs[0], tuple):
+                            fpn_outs_2 = torch.cat([short_fpn_outs[0], jian2(long_fpn_outs[0][0])], dim=1)
+                            fpn_outs_1 = torch.cat([short_fpn_outs[1], jian1(long_fpn_outs[0][1])], dim=1)
+                            fpn_outs_0 = torch.cat([short_fpn_outs[2], jian0(long_fpn_outs[0][2])], dim=1)
+                        else:
+                            fpn_outs_2 = torch.cat([short_fpn_outs[0], jian2(long_fpn_outs[0])], dim=1)
+                            fpn_outs_1 = torch.cat([short_fpn_outs[1], jian1(long_fpn_outs[1])], dim=1)
+                            fpn_outs_0 = torch.cat([short_fpn_outs[2], jian0(long_fpn_outs[2])], dim=1)
                         fpn_outs = (fpn_outs_2, fpn_outs_1, fpn_outs_0)
                         fpn_outs = [x + y for x, y in zip(fpn_outs, rurrent_pan_outs)]
                     else:
@@ -230,6 +278,7 @@ class YOLOXLONGSHORTV3ODDIL(nn.Module):
                     )
 
                     losses = {
+                        "speed_score": speed_score,
                         "total_loss": loss,
                         # "det_loss": loss,
                         "iou_loss": iou_loss,
