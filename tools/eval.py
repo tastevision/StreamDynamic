@@ -130,6 +130,7 @@ def main(exp, args, num_gpu):
     cudnn.benchmark = True
 
     rank = get_local_rank()
+    device = "cuda:{}".format(rank)
 
     file_name = os.path.join(exp.output_dir, args.experiment_name)
 
@@ -155,7 +156,18 @@ def main(exp, args, num_gpu):
 
     if isinstance(evaluator, list):
         torch.cuda.set_device(rank)
-        model.cuda(rank)
+        # 需要在这里特别地将model.long_backbone加载到gpu上
+        for m in model.long_backbone:
+            m.to(device)
+        if isinstance(model.jian0, list):
+            for m in model.jian0:
+                m.to(device)
+            for m in model.jian1:
+                m.to(device)
+            for m in model.jian2:
+                m.to(device)
+        model.to(device)
+        # model.cuda(rank)
         model.eval()
 
         if not args.speed and not args.trt:
@@ -170,7 +182,7 @@ def main(exp, args, num_gpu):
             logger.info("loaded checkpoint done.")
 
         if is_distributed:
-            model = DDP(model, device_ids=[rank])
+            model = DDP(model, device_ids=[rank], find_unused_parameters=True)
 
         if args.fuse:
             logger.info("\tFusing model...")
@@ -205,6 +217,17 @@ def main(exp, args, num_gpu):
         evaluator.per_class_AR = True
 
         torch.cuda.set_device(rank)
+        # 需要在这里特别地将model.long_backbone加载到gpu上
+        for m in model.long_backbone:
+            m.cuda(rank)
+        if isinstance(model.jian0, list):
+            for m in model.jian0:
+                m.cuda(rank)
+            for m in model.jian1:
+                m.cuda(rank)
+            for m in model.jian2:
+                m.cuda(rank)
+        # model.to(device)
         model.cuda(rank)
         model.eval()
 
@@ -220,7 +243,7 @@ def main(exp, args, num_gpu):
             logger.info("loaded checkpoint done.")
 
         if is_distributed:
-            model = DDP(model, device_ids=[rank])
+            model = DDP(model, device_ids=[rank], find_unused_parameters=True)
 
         if args.fuse:
             logger.info("\tFusing model...")
