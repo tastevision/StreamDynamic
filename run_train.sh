@@ -1,8 +1,8 @@
 python tools/train.py \
     -f cfgs/streamnet_s \
-    -c ./models/coco_pretrained_models/yolox_l_drfpn.pth \
+    -c ./models/coco_pretrained_models/yolox_s_drfpn.pth \
     -t ./models/teacher_models/l_s50_still_dfp_flip_ep8_4_gpus_bs_8/best_ckpt.pth \
-    --experiment-name streamnet_s_20231010 \
+    --experiment-name streamnet_s_20231011 \
     -d 4 -b 16 --fp16
  
 # python tools/train.py -f cfgs/streamnet_m \
