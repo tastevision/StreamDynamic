@@ -143,12 +143,13 @@ class YOLOXLONGSHORTV3ODDIL(nn.Module):
         outputs = dict()
         speed_score = self.compute_speed_score(x) # 一个0到1之间的数
 
-        if self.training: # 训练时，随机选择一条路径进行训练
-            N = np.random.randint(len(self.long_cfg))
-        else: # 测试时，按照speed_detector给出的结果进行测试
-            N = int(len(self.long_cfg) * speed_score) # 选择第几条分支
-            if N >= len(self.long_cfg):
-                N = len(self.long_cfg) - 1
+        N = 3 # 2023-10-10 暂时困定该分支选择过程
+        # if self.training: # 训练时，随机选择一条路径进行训练
+        #     N = np.random.randint(len(self.long_cfg))
+        # else: # 测试时，按照speed_detector给出的结果进行测试
+        #     N = int(len(self.long_cfg) * speed_score) # 选择第几条分支
+        #     if N >= len(self.long_cfg):
+        #         N = len(self.long_cfg) - 1
 
         # 找到当前的frame_num
         frame_num = self.long_cfg[N]['frame_num']
