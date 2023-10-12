@@ -23,7 +23,7 @@ class Exp(MyExp):
         self.basic_lr_per_img = 0.001 / 64.0
 
         self.warmup_epochs = 1
-        self.max_epoch = 8            # 此处用于控制最大训练轮数
+        self.max_epoch = 8
         self.no_aug_epochs = 8
         self.eval_interval = 1
         self.train_ann = 'train.json'
@@ -143,7 +143,8 @@ class Exp(MyExp):
 
             # 速度检测器
             speed_detector = SpeedDetector(
-                target_size=self.speed_detector_target_size
+                target_size=self.speed_detector_target_size,
+                branch_num=len(self.long_cfg),
             )
 
             self.model = YOLOXLONGSHORTV3ODDIL(
@@ -333,7 +334,7 @@ class Exp(MyExp):
     # 这个函数不用改
     def get_trainer(self, args):
         from exps.train_utils.longshort_dil_trainer import Trainer
-        trainer = Trainer(self, args)
+        trainer = Trainer(self, args, branch_num=len(self.long_cfg)) # branch_num表示各个分支的结果
         # NOTE: trainer shouldn't be an attribute of exp object
         return trainer
 

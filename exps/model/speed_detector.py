@@ -9,9 +9,10 @@ from torchvision import transforms
 #     """
 #     速度检测器
 #     """
-#     def __init__(self, target_size):
+#     def __init__(self, target_size, branch_num):
 #         """
 #         由于帧间差在很小的尺寸下就可以体现出速度，这里考虑先对输入图像进行resize
+#         branch_num表示速度模式的分类数
 #         """
 #         super().__init__()
 #         self.target_size = target_size
@@ -27,8 +28,8 @@ from torchvision import transforms
 #         )
 #         # 这里存在可以改进的地方，目前这个维数是不可自动调整的
 #         self.head = nn.Sequential(
-#             nn.Linear(625, 1),
-#             nn.Sigmoid(),
+#             nn.Linear(625, branch_num),
+#             nn.Softmax(),
 #         )
 #
 #     def forward(self, x):
@@ -56,13 +57,13 @@ from torchvision import transforms
 #         # 之后如果直接分类，那么整个batch中的每一个sample都有一个速度评分，
 #         # 这样的话，单个sample就存在频繁切换分支的情况，所以可以考虑直接同一
 #         # 个batch输出一个单独的速度评分
-#         return torch.mean(scores)
+#         return scores
 
 class SpeedDetector(nn.Module):
     """
     速度检测器
     """
-    def __init__(self, target_size):
+    def __init__(self, target_size, branch_num):
         """
         由于帧间差在很小的尺寸下就可以体现出速度，这里考虑先对输入图像进行resize
         """
@@ -90,7 +91,7 @@ class SpeedDetector(nn.Module):
             current_frame = x[0]
         current_frame = current_frame / 255.0
         history_frame = history_frame / 255.0
-        
+
         # frame_diff = self.resize(history_frame)
         # if current_frame.size() != history_frame.size():
         #     frame_diff = self.resize(history_frame)
