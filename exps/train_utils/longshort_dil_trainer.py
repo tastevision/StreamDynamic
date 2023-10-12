@@ -37,7 +37,10 @@ from .ema import ModelEMA
 
 
 class Trainer:
-    def __init__(self, exp: Exp, args):
+    def __init__(self, exp: Exp, args, branch_num):
+        """
+        branch_num: 不同历史帧长度的分支数
+        """
         # init function only defines some basic attr, other attrs like model, optimizer are built in
         # before_train methods.
         self.exp = exp
@@ -58,6 +61,8 @@ class Trainer:
         self.data_type = torch.float16 if args.fp16 else torch.float32
         self.input_size = exp.input_size
         self.best_ap = 0
+
+        self.branch_num = branch_num
 
         # metric record
         self.meter = MeterBuffer(window_size=exp.print_interval)
@@ -110,18 +115,34 @@ class Trainer:
         inps, targets = self.exp.preprocess(inps, targets, self.input_size)
         data_end_time = time.time()
 
-        with torch.cuda.amp.autocast(enabled=self.amp_training):
-            outputs = self.model(inps, targets)
+        # beginning of seperately training each branch
+        for i in range(self.branch_num):
+            with torch.cuda.amp.autocast(enabled=self.amp_training):
+                outputs = self.model(inps, targets, branch_num=i)
 
-        loss = outputs["total_loss"]
+            loss = outputs["total_loss"]
 
-        self.optimizer.zero_grad()
-        self.scaler.scale(loss).backward()
-        self.scaler.step(self.optimizer)
-        self.scaler.update()
+            self.optimizer.zero_grad()
+            self.scaler.scale(loss).backward()
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
 
-        if self.use_model_ema:
-            self.ema_model.update(self.model)
+            if self.use_model_ema:
+                self.ema_model.update(self.model)
+        # end of seperately training each branch
+
+        # # TODO beginning of router training
+        # outputs = self.model(inps, targets, train_router=True)
+        # loss = outputs["total_loss"]
+        #
+        # self.optimizer.zero_grad()
+        # self.scaler.scale(loss).backward()
+        # self.scaler.step(self.optimizer)
+        # self.scaler.update()
+        #
+        # if self.use_model_ema:
+        #     self.ema_model.update(self.model)
+        # # end of router training
 
         lr = self.lr_scheduler.update_lr(self.progress_in_iter + 1)
         for param_group in self.optimizer.param_groups:

@@ -137,14 +137,23 @@ class YOLOXLONGSHORTV3ODDIL(nn.Module):
         speed_score = self.speed_detector(x) # 通过x，即多帧的结果计算得到速度评分
         return speed_score
 
-    def forward(self, x, targets=None, buffer=None, mode='off_pipe'):
+    def forward(self, x, targets=None, buffer=None, mode='off_pipe', branch_num=None, train_router=False):
         # fpn output content features of [dark3, dark4, dark5]
+        """
+        branch_num: 指定走哪条分支
+        train_router: 是否训练router
+        """
         assert mode in ['off_pipe', 'on_pipe']
         outputs = dict()
-        speed_score = self.compute_speed_score(x) # 一个0到1之间的数
+        speed_score = self.compute_speed_score(x) # 一个向量，长度和branch的数量一致
 
-        if self.training: # 训练时，随机选择一条路径进行训练
-            N = np.random.randint(len(self.long_cfg))
+        if self.training and not train_router: # 训练时，随机选择一条路径进行训练
+            # 在这里需要解冻主结构，以便避免主结构无法更新
+            assert branch_num is not None
+            N = branch_num
+        elif self.training and train_router:
+            # 冻结主结构，只训练speed_detector
+            pass
         else: # 测试时，按照speed_detector给出的结果进行测试
             N = int(len(self.long_cfg) * speed_score) # 选择第几条分支
             if N >= len(self.long_cfg):
@@ -278,7 +287,6 @@ class YOLOXLONGSHORTV3ODDIL(nn.Module):
                     )
 
                     losses = {
-                        "speed_score": speed_score,
                         "total_loss": loss,
                         # "det_loss": loss,
                         "iou_loss": iou_loss,
