@@ -240,9 +240,6 @@ class Trainer:
                 self.wandb_logger.finish()
 
     def before_epoch(self):
-        if (self.epoch + 1) % self.exp.eval_interval == 0:
-            all_reduce_norm(self.model)
-            self.evaluate_and_save_model()
         logger.info("---> start train epoch{}".format(self.epoch + 1))
 
         if self.epoch + 1 == self.max_epoch - self.exp.no_aug_epochs or self.no_aug:
