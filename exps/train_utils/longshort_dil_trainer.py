@@ -11,6 +11,7 @@ from loguru import logger
 import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.tensorboard import SummaryWriter
+from torch.nn import functional as F
 
 # from yolox.data import DataPrefetcher
 from .longshort_data_prefetcher import DataPrefetcher
@@ -34,6 +35,7 @@ from yolox.utils import (
     synchronize
 )
 from .ema import ModelEMA
+from torch import nn
 
 
 class Trainer:
@@ -69,6 +71,9 @@ class Trainer:
         self.file_name = os.path.join(exp.output_dir, args.experiment_name)
 
         self.ignore_keys = ["backbone_t", "head_t"]
+
+        # 速度判断器的损失，需要在这里定义，在训练过程中生成必要的监督信息
+        self.speed_lossfn = nn.MSELoss()
 
         if self.rank == 0:
             os.makedirs(self.file_name, exist_ok=True)
@@ -116,11 +121,15 @@ class Trainer:
         data_end_time = time.time()
 
         # beginning of seperately training each branch
+        branch_compute_time = [0.0 for _ in range(self.branch_num)]
+        branch_total_loss = [0.0 for _ in range(self.branch_num)]
         for i in range(self.branch_num):
+            beg = time.time()
             with torch.cuda.amp.autocast(enabled=self.amp_training):
                 outputs = self.model(inps, targets, branch_num=i)
 
             loss = outputs["total_loss"]
+            branch_total_loss[i] = loss
 
             self.optimizer.zero_grad()
             self.scaler.scale(loss).backward()
@@ -129,20 +138,30 @@ class Trainer:
 
             if self.use_model_ema:
                 self.ema_model.update(self.model)
+            end = time.time()
+            branch_compute_time[i] = end - beg
+
         # end of seperately training each branch
 
-        # # TODO beginning of router training
-        # outputs = self.model(inps, targets, train_router=True)
-        # loss = outputs["total_loss"]
-        #
-        # self.optimizer.zero_grad()
-        # self.scaler.scale(loss).backward()
-        # self.scaler.step(self.optimizer)
-        # self.scaler.update()
-        #
-        # if self.use_model_ema:
-        #     self.ema_model.update(self.model)
-        # # end of router training
+        # 计算出训练速度判断器需要的监督信息
+        tmp_device = branch_total_loss[0].device
+        branch_compute_time = torch.tensor(branch_compute_time).to(tmp_device)
+        branch_total_loss = torch.tensor(branch_total_loss).to(tmp_device)
+        speed_supervision = F.softmax(branch_total_loss * branch_compute_time) # 同时在计算速度和损失上达到最小的那个分支，被视为最合适的分支
+
+        # TODO beginning of router training
+        with torch.cuda.amp.autocast(enabled=self.amp_training):
+            speed_score = self.model(inps, targets, train_router=True)
+            loss = self.speed_lossfn(speed_score, speed_supervision)
+        self.optimizer.zero_grad()
+        self.scaler.scale(loss).backward()
+        self.scaler.step(self.optimizer)
+        self.scaler.update()
+        print(f"speed detector loss: f{loss}")
+        
+        if self.use_model_ema:
+            self.ema_model.update(self.model)
+        # end of router training
 
         lr = self.lr_scheduler.update_lr(self.progress_in_iter + 1)
         for param_group in self.optimizer.param_groups:
@@ -176,6 +195,8 @@ class Trainer:
                 m.to(self.device)
             for m in model.jian2:
                 m.to(self.device)
+        model.speed_detector.to(self.device)
+        # model.speed_detector.half()
         model.to(self.device)
 
         # solver related init
