@@ -19,16 +19,12 @@ class SpeedDetector(nn.Module):
         self.resize = transforms.Resize(list(target_size))
         # 定义一个简单的二维分类模型
         self.extractor = nn.Sequential(
-            nn.Conv2d(3, 8, 1, bias=True),  # (16, w - 2, h - 2)
-            nn.AvgPool2d(2),      # (16, (w - 2) // 2, (h - 2) // 2)
-            nn.ReLU(inplace=True),
-            nn.Conv2d(8, 1, 1, bias=True),  # (4, ((w - 2) // 2) - 2, ((h - 2) // 2) - 2)
-            nn.AvgPool2d(2),      # (4, (((w - 2) // 2) - 2) // 2, (((h - 2) // 2) - 2) // 2)
+            nn.Conv2d(3, 1, 1, bias=True),  # (16, w - 2, h - 2)
             nn.Flatten(1),
         )
         # 这里存在可以改进的地方，目前这个维数是不可自动调整的
         self.head = nn.Sequential(
-            nn.Linear(625, branch_num),
+            nn.Linear(10000, branch_num),
             nn.Softmax(),
         )
 

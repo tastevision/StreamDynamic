@@ -152,12 +152,13 @@ class Trainer:
         # TODO beginning of router training
         with torch.cuda.amp.autocast(enabled=self.amp_training):
             speed_score = self.model(inps, targets, train_router=True)
+            speed_supervision = speed_supervision.repeat(speed_score.size()[0], 1)
             loss = self.speed_lossfn(speed_score, speed_supervision)
         self.optimizer.zero_grad()
         self.scaler.scale(loss).backward()
         self.scaler.step(self.optimizer)
         self.scaler.update()
-        print(f"speed detector loss: f{loss}")
+        # print(f"speed detector loss: f{loss}")
         
         if self.use_model_ema:
             self.ema_model.update(self.model)
@@ -234,7 +235,7 @@ class Trainer:
         self.model = model
 
         self.evaluator = self.exp.get_evaluator(
-            batch_size=self.args.batch_size, is_distributed=self.is_distributed
+            batch_size=self.args.eval_batch_size, is_distributed=self.is_distributed
         )
         # Tensorboard and Wandb loggers
         if self.rank == 0:
