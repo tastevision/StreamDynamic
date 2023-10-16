@@ -288,7 +288,6 @@ class YOLOXLONGSHORTV3ODDIL(nn.Module):
                     )
 
                     losses = {
-                        "speed_score": speed_score,
                         "total_loss": loss,
                         # "det_loss": loss,
                         "iou_loss": iou_loss,
