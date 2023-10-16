@@ -155,7 +155,7 @@ class YOLOXLONGSHORTV3ODDIL(nn.Module):
             return speed_score
         else: # 测试时，按照speed_detector给出的结果进行测试
             speed_score = self.compute_speed_score(x) # 一个向量，长度和branch的数量一致
-            N = int(speed_score.argmax(dim=1)[0])
+            N = int(speed_score.argmin(dim=1)[0])
             # N = int(len(self.long_cfg) * speed_score) # 选择第几条分支
             # if N >= len(self.long_cfg):
             #     N = len(self.long_cfg) - 1
