@@ -1,0 +1,2 @@
+run_train.sh merge=ours
+update_project.sh merge=ours
