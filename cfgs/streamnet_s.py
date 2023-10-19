@@ -46,22 +46,14 @@ class Exp(MyExp):
                             with_short_cut=False,
                             out_channels=[((64, 128, 256), 1), ],
                         )
-        # 输入历史帧的分支（由于是动态的，这里直接定义多个）
-        self.long_cfg = [
-            dict(
-                frame_num=fn,
-                delta=1,
-                with_short_cut=False,
-                include_current_frame=False,
-                out_channels=[((21, 42, 85), fn), ],
-            ) for fn in [1, 2, 3, 4]
-        ]
-
-        # 找到frame_num最大的那个项
-        self.longest_long_cfg = self.long_cfg[0]
-        for item in self.long_cfg:
-            if item["frame_num"] > self.longest_long_cfg["frame_num"]:
-                self.longest_long_cfg = item
+        # 输入历史帧的分支
+        self.long_cfg = dict(
+            frame_num=4,
+            delta=1,
+            with_short_cut=False,
+            include_current_frame=False,
+            out_channels=[((21, 42, 85), 4), ],
+        )
 
         self.yolox_cfg = dict(
             merge_form="long_fusion",
@@ -83,7 +75,7 @@ class Exp(MyExp):
     def get_model(self):
         from exps.model.dfp_pafpn import DFPPAFPN
         from exps.model.yolox_longshort_v3_oddil import YOLOXLONGSHORTV3ODDIL
-        from exps.model.dfp_pafpn_long_v3 import DFPPAFPNLONGV3
+        from exps.model.dfp_pafpn_long_dynamic import DFPPAFPNLONGDYNAMIC
         from exps.model.dfp_pafpn_short_v3 import DFPPAFPNSHORTV3
         from exps.model.longshort_backbone_neck_v2 import BACKBONENECKV2
         from exps.model.speed_detector import SpeedDetector
@@ -100,16 +92,14 @@ class Exp(MyExp):
 
         if getattr(self, "model", None) is None:
             in_channels = [256, 512, 1024]
-            long_backbone_s = [
-                DFPPAFPNLONGV3(
-                    self.depth, 
-                    self.width, 
-                    in_channels=in_channels, 
-                    frame_num=self.long_cfg[i]["frame_num"],
-                    with_short_cut=self.long_cfg[i]["with_short_cut"],
-                    out_channels=self.long_cfg[i]["out_channels"]
-                ) for i in range(len(self.long_cfg))
-            ]
+            long_backbone_s = DFPPAFPNLONGDYNAMIC(
+                self.depth, 
+                self.width, 
+                in_channels=in_channels, 
+                frame_num=self.long_cfg["frame_num"],
+                with_short_cut=self.long_cfg["with_short_cut"],
+                out_channels=self.long_cfg["out_channels"]
+            )
             short_backbone_s = DFPPAFPNSHORTV3(
                 self.depth, 
                 self.width, 
@@ -144,7 +134,7 @@ class Exp(MyExp):
             # 速度检测器
             speed_detector = SpeedDetector(
                 target_size=self.speed_detector_target_size,
-                branch_num=len(self.long_cfg),
+                branch_num=self.long_cfg["frame_num"],
             )
 
             self.model = YOLOXLONGSHORTV3ODDIL(
@@ -191,11 +181,11 @@ class Exp(MyExp):
                 hsv=False, 
                 flip=True, 
                 short_frame_num=self.short_cfg["frame_num"], 
-                long_frame_num=self.longest_long_cfg["frame_num"], # 在这里只要最长的那个frame_num
+                long_frame_num=self.long_cfg["frame_num"], # 在这里只要最长的那个frame_num
             ),
             cache=cache_img,
             short_cfg=self.short_cfg,
-            long_cfg=self.longest_long_cfg, # 依旧引入最长的那个long_cfg
+            long_cfg=self.long_cfg, # 依旧引入最长的那个long_cfg
         )
 
         dataset = LongShortMosaicDetectionDil(
@@ -207,7 +197,7 @@ class Exp(MyExp):
                 hsv=False, 
                 flip=True, 
                 short_frame_num=self.short_cfg["frame_num"], 
-                long_frame_num=self.longest_long_cfg["frame_num"],
+                long_frame_num=self.long_cfg["frame_num"],
             ),
             degrees=self.degrees,
             translate=self.translate,
@@ -257,10 +247,10 @@ class Exp(MyExp):
             img_size=self.test_size,
             preproc=LongShortValTransform(
                 short_frame_num=self.short_cfg["frame_num"],
-                long_frame_num=self.longest_long_cfg["frame_num"],
+                long_frame_num=self.long_cfg["frame_num"],
             ),
             short_cfg=self.short_cfg,
-            long_cfg=self.longest_long_cfg,
+            long_cfg=self.long_cfg,
         )
 
         # 从这行开始往下到函数末尾都和streamyolo相比没有改动
@@ -334,7 +324,7 @@ class Exp(MyExp):
     # 这个函数不用改
     def get_trainer(self, args):
         from exps.train_utils.longshort_dil_trainer import Trainer
-        trainer = Trainer(self, args, branch_num=len(self.long_cfg)) # branch_num表示各个分支的结果
+        trainer = Trainer(self, args, branch_num=self.long_cfg["frame_num"]) # branch_num表示各个分支的结果
         # NOTE: trainer shouldn't be an attribute of exp object
         return trainer
 

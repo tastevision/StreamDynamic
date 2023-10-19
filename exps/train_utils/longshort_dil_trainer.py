@@ -73,7 +73,7 @@ class Trainer:
         self.ignore_keys = ["backbone_t", "head_t"]
 
         # 速度判断器的损失，需要在这里定义，在训练过程中生成必要的监督信息
-        self.speed_lossfn = nn.MSELoss()
+        self.speed_lossfn = nn.KLDivLoss()
 
         if self.rank == 0:
             os.makedirs(self.file_name, exist_ok=True)
@@ -121,12 +121,12 @@ class Trainer:
         data_end_time = time.time()
 
         # beginning of seperately training each branch
-        branch_compute_time = [0.0 for _ in range(self.branch_num)]
-        branch_total_loss = [0.0 for _ in range(self.branch_num)]
+        branch_compute_time = [1e2 for _ in range(self.branch_num)]
+        branch_total_loss = [1e10 for _ in range(self.branch_num)]
         for i in range(self.branch_num):
             beg = time.time()
             with torch.cuda.amp.autocast(enabled=self.amp_training):
-                outputs = self.model(inps, targets, branch_num=i)
+                outputs = self.model(inps, targets, N_frames=i)
 
             loss = outputs["total_loss"]
             branch_total_loss[i] = loss
@@ -149,7 +149,7 @@ class Trainer:
         branch_total_loss = torch.tensor(branch_total_loss).to(tmp_device)
         speed_supervision = F.softmax(branch_total_loss * branch_compute_time) # 同时在计算速度和损失上达到最小的那个分支，被视为最合适的分支
 
-        # TODO beginning of router training
+        # beginning of router training
         with torch.cuda.amp.autocast(enabled=self.amp_training):
             speed_score = self.model(inps, targets, train_router=True)
             speed_supervision = speed_supervision.repeat(speed_score.size()[0], 1)
@@ -187,15 +187,12 @@ class Trainer:
         #     "Model Summary: {}".format(get_model_info(model, self.exp.test_size))
         # )
         # 需要在这里特别地将model.long_backbone加载到gpu上
-        for m in model.long_backbone:
+        for m in model.jian0:
             m.to(self.device)
-        if isinstance(model.jian0, list):
-            for m in model.jian0:
-                m.to(self.device)
-            for m in model.jian1:
-                m.to(self.device)
-            for m in model.jian2:
-                m.to(self.device)
+        for m in model.jian1:
+            m.to(self.device)
+        for m in model.jian2:
+            m.to(self.device)
         model.speed_detector.to(self.device)
         # model.speed_detector.half()
         model.to(self.device)
