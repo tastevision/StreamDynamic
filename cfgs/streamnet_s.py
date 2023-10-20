@@ -329,6 +329,13 @@ class Exp(MyExp):
         return trainer
 
     # 这个函数不用改
+    def get_speed_trainer(self, args):
+        from exps.train_utils.longshort_speed_router_trainer import Trainer
+        trainer = Trainer(self, args, branch_num=self.long_cfg["frame_num"]) # branch_num表示各个分支的结果
+        # NOTE: trainer shouldn't be an attribute of exp object
+        return trainer
+
+    # 这个函数不用改
     def eval(self, model, evaluator, is_distributed, half=False):
         return evaluator.evaluate(model, is_distributed, half)
 

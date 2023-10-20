@@ -127,27 +127,14 @@ class Trainer:
             beg = time.time()
             with torch.cuda.amp.autocast(enabled=self.amp_training):
                 outputs = self.model(inps, targets, N_frames=i)
-
-            loss = outputs["total_loss"]
-            branch_total_loss[i] = loss
-
-            self.optimizer.zero_grad()
-            self.scaler.scale(loss).backward()
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
-
-            if self.use_model_ema:
-                self.ema_model.update(self.model)
             end = time.time()
             branch_compute_time[i] = end - beg
 
         # end of seperately training each branch
 
         # 计算出训练速度判断器需要的监督信息
-        tmp_device = branch_total_loss[0].device
-        branch_compute_time = torch.tensor(branch_compute_time).to(tmp_device)
-        branch_total_loss = torch.tensor(branch_total_loss).to(tmp_device)
-        speed_supervision = F.softmax(branch_total_loss * branch_compute_time) # 同时在计算速度和损失上达到最小的那个分支，被视为最合适的分支
+        branch_compute_time = torch.tensor(branch_compute_time).to(self.device)
+        speed_supervision = F.softmax(branch_compute_time) # 同时在计算速度和损失上达到最小的那个分支，被视为最合适的分支
 
         # beginning of router training
         with torch.cuda.amp.autocast(enabled=self.amp_training):
@@ -169,12 +156,6 @@ class Trainer:
             param_group["lr"] = lr
 
         iter_end_time = time.time()
-        self.meter.update(
-            iter_time=iter_end_time - iter_start_time,
-            data_time=data_end_time - iter_start_time,
-            lr=lr,
-            **outputs,
-        )
 
     def before_train(self):
         logger.info("args: {}".format(self.args))
@@ -289,49 +270,50 @@ class Trainer:
             * log information
             * reset setting of resize
         """
-        # log needed information
-        if (self.iter + 1) % self.exp.print_interval == 0:
-            # TODO check ETA logic
-            left_iters = self.max_iter * self.max_epoch - (self.progress_in_iter + 1)
-            eta_seconds = self.meter["iter_time"].global_avg * left_iters
-            eta_str = "ETA: {}".format(datetime.timedelta(seconds=int(eta_seconds)))
-
-            progress_str = "epoch: {}/{}, iter: {}/{}".format(
-                self.epoch + 1, self.max_epoch, self.iter + 1, self.max_iter
-            )
-            loss_meter = self.meter.get_filtered_meter("loss")
-            loss_str = ", ".join(
-                ["{}: {:.1f}".format(k, v.latest) for k, v in loss_meter.items()]
-            )
-
-            time_meter = self.meter.get_filtered_meter("time")
-            time_str = ", ".join(
-                ["{}: {:.3f}s".format(k, v.avg) for k, v in time_meter.items()]
-            )
-
-            logger.info(
-                "{}, mem: {:.0f}Mb, {}, {}, lr: {:.3e}".format(
-                    progress_str,
-                    gpu_mem_usage(),
-                    time_str,
-                    loss_str,
-                    self.meter["lr"].latest,
-                )
-                + (", size: {:d}, {}".format(self.input_size[0], eta_str))
-            )
-
-            if self.rank == 0:
-                if self.args.logger == "wandb":
-                    self.wandb_logger.log_metrics({k: v.latest for k, v in loss_meter.items()})
-                    self.wandb_logger.log_metrics({"lr": self.meter["lr"].latest})
-
-            self.meter.clear_meters()
-
-        # random resizing
-        if (self.progress_in_iter + 1) % 10 == 0:
-            self.input_size = self.exp.random_resize(
-                self.train_loader, self.epoch, self.rank, self.is_distributed
-            )
+        pass
+        # # log needed information
+        # if (self.iter + 1) % self.exp.print_interval == 0:
+        #     # TODO check ETA logic
+        #     left_iters = self.max_iter * self.max_epoch - (self.progress_in_iter + 1)
+        #     eta_seconds = self.meter["iter_time"].global_avg * left_iters
+        #     eta_str = "ETA: {}".format(datetime.timedelta(seconds=int(eta_seconds)))
+        #
+        #     progress_str = "epoch: {}/{}, iter: {}/{}".format(
+        #         self.epoch + 1, self.max_epoch, self.iter + 1, self.max_iter
+        #     )
+        #     loss_meter = self.meter.get_filtered_meter("loss")
+        #     loss_str = ", ".join(
+        #         ["{}: {:.1f}".format(k, v.latest) for k, v in loss_meter.items()]
+        #     )
+        #
+        #     time_meter = self.meter.get_filtered_meter("time")
+        #     time_str = ", ".join(
+        #         ["{}: {:.3f}s".format(k, v.avg) for k, v in time_meter.items()]
+        #     )
+        #
+        #     logger.info(
+        #         "{}, mem: {:.0f}Mb, {}, {}, lr: {:.3e}".format(
+        #             progress_str,
+        #             gpu_mem_usage(),
+        #             time_str,
+        #             loss_str,
+        #             self.meter["lr"].latest,
+        #         )
+        #         + (", size: {:d}, {}".format(self.input_size[0], eta_str))
+        #     )
+        #
+        #     if self.rank == 0:
+        #         if self.args.logger == "wandb":
+        #             self.wandb_logger.log_metrics({k: v.latest for k, v in loss_meter.items()})
+        #             self.wandb_logger.log_metrics({"lr": self.meter["lr"].latest})
+        #
+        #     self.meter.clear_meters()
+        #
+        # # random resizing
+        # if (self.progress_in_iter + 1) % 10 == 0:
+        #     self.input_size = self.exp.random_resize(
+        #         self.train_loader, self.epoch, self.rank, self.is_distributed
+        #     )
 
     @property
     def progress_in_iter(self):

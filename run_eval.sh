@@ -1,9 +1,7 @@
 python tools/eval.py -f cfgs/streamnet_s \
-                     -c data/output/streamnet_s_20231008/latest_ckpt.pth \
-                     --experiment-name streamnet_s_20231009 \
-                     -d 2 -b 8 --conf 0.01
-
-# --fp16
+                     -c data/output/streamnet_s_20231019/best_ckpt.pth \
+                     --experiment-name streamnet_s_20231019 \
+                     -d 4 -b 8 --conf 0.01 --fp16
 
 # python tools/eval.py -f cfgs/streamnet_m \
 #                      -c models/checkpoints/streamnet_m.pth \
