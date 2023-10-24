@@ -1,7 +1,15 @@
+# 以下是载入已有模型重训练的示例
+# python tools/train_dil.py -f cfgs/streamnet_s \
+#                           -c /home/xiang.huang/project/StreamDynamicTest/data/output/streamnet_s_2023102301/epoch_6_ckpt.pth \
+#                           -t ./models/teacher_models/l_s50_still_dfp_flip_ep8_4_gpus_bs_8/best_ckpt.pth \
+#                           --resume \
+#                           --experiment-name streamnet_s_20231024 \
+#                           --eval-batch-size 8 \
+#                           -d 4 -b 32 --fp16
+
 python tools/train_dil.py -f cfgs/streamnet_s \
-                          -c /home/xiang.huang/project/StreamDynamicTest/data/output/streamnet_s_2023102301/epoch_6_ckpt.pth \
+                          -c ./models/coco_pretrained_models/yolox_s_drfpn.pth \
                           -t ./models/teacher_models/l_s50_still_dfp_flip_ep8_4_gpus_bs_8/best_ckpt.pth \
-                          --resume \
                           --experiment-name streamnet_s_20231024 \
                           --eval-batch-size 8 \
                           -d 4 -b 32 --fp16
