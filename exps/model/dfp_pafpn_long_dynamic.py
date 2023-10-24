@@ -38,7 +38,7 @@ class DFPPAFPNLONGDYNAMIC(nn.Module):
         self.in_channels = in_channels
         self.frame_num = frame_num
         self.with_short_cut = with_short_cut
-        self.merge_form = merge_form  # 相比short模型，在这里多加了一个特征融合策略，这在论文中有体现
+        self.merge_form = merge_form
         self.out_channels = out_channels
         self.conv_group_num = len(out_channels)
         self.conv_group_dict = defaultdict(dict)
@@ -46,51 +46,48 @@ class DFPPAFPNLONGDYNAMIC(nn.Module):
         Conv = DWConv if depthwise else BaseConv
 
         for i in range(self.conv_group_num):
-            setattr(
-                self,
-                f"group_{i}_jian2",
-                Conv(
-                    in_channels=int(in_channels[0] * width),
-                    out_channels=self.out_channels[i][0][0],
-                    ksize=1,
-                    stride=1,
-                    act=act,
+            setattr(self,
+                    f"group_{i}_jian2",
+                    Conv(
+                        in_channels=int(in_channels[0] * width),
+                        out_channels=self.out_channels[i][0][0],
+                        ksize=1,
+                        stride=1,
+                        act=act,
+                    )
                 )
-            )
 
-            setattr(
-                self,
-                f"group_{i}_jian1",
-                Conv(
-                    in_channels=int(in_channels[1] * width),
-                    out_channels=self.out_channels[i][0][1],
-                    ksize=1,
-                    stride=1,
-                    act=act,
+            setattr(self,
+                    f"group_{i}_jian1",
+                    Conv(
+                        in_channels=int(in_channels[1] * width),
+                        out_channels=self.out_channels[i][0][1],
+                        ksize=1,
+                        stride=1,
+                        act=act,
+                    )
                 )
-            )
 
-            setattr(
-                self,
-                f"group_{i}_jian0",
-                Conv(
-                    in_channels=int(in_channels[2] * width),
-                    out_channels=self.out_channels[i][0][2],
-                    ksize=1,
-                    stride=1,
-                    act=act,
+            setattr(self,
+                    f"group_{i}_jian0",
+                    Conv(
+                        in_channels=int(in_channels[2] * width),
+                        out_channels=self.out_channels[i][0][2],
+                        ksize=1,
+                        stride=1,
+                        act=act,
+                    )
                 )
-            )
 
     def off_forward(self, input, N_frame, backbone_neck):
         """
         Args:
             inputs: input images.
-            N_frame: length of history frames
 
         Returns:
             Tuple[Tensor]: FPN feature.
         """
+
 
         # backbone
         rurrent_pan_out2, rurrent_pan_out1, rurrent_pan_out0 = backbone_neck(torch.split(input, 3, dim=1)[0])
@@ -100,9 +97,9 @@ class DFPPAFPNLONGDYNAMIC(nn.Module):
         support_pan_out2s = []
         support_pan_out1s = []
         support_pan_out0s = []
-        for i in range(N_frame):
+        for i in range(N_frame - 1):
 
-            support_pan_out2, support_pan_out1, support_pan_out0 = backbone_neck(torch.split(input, 3, dim=1)[i])
+            support_pan_out2, support_pan_out1, support_pan_out0 = backbone_neck(torch.split(input, 3, dim=1)[i+1])
 
             support_pan_out2s.append(support_pan_out2)
             support_pan_out1s.append(support_pan_out1)
@@ -125,7 +122,6 @@ class DFPPAFPNLONGDYNAMIC(nn.Module):
                 pan_out0s.append(getattr(self, f"group_{i}_jian0")(all_pan_out0s[frame_id]))
             frame_start_id += group_frame_num
 
-        # 以下和short不同，上面的都一样
         if self.with_short_cut:
             if self.merge_form == "pure_concat":
                 pan_out2 = torch.cat(pan_out2s, dim=1) + rurrent_pan_out2
@@ -161,6 +157,7 @@ class DFPPAFPNLONGDYNAMIC(nn.Module):
         Returns:
             Tuple[Tensor]: FPN feature.
         """
+
 
         #  backbone
         rurrent_out_features = self.backbone(input)
@@ -211,7 +208,8 @@ class DFPPAFPNLONGDYNAMIC(nn.Module):
         """
         N_frame: 表示历史帧长度
         """
-        assert N_frame <= self.frame_num # 小于最长的历史帧
+        assert N_frame <= self.frame_num
+
         if mode=='off_pipe':
             # Glops caculate mode
             if input.size()[1] == 3:
@@ -226,12 +224,12 @@ class DFPPAFPNLONGDYNAMIC(nn.Module):
         elif mode=='on_pipe':
             # online star state
             if buffer == None:
-                output, buffer_ = self.online_forward(input, node='star')
+                output, buffer_ = self.online_forward(input, N_frame, node='star')
             # online inference
             else:
                 assert len(buffer) == 3
                 assert input.size()[1] == 3
-                output, buffer_ = self.online_forward(input, buffer=buffer, node='buffer')
+                output, buffer_ = self.online_forward(input, N_frame, buffer=buffer, node='buffer')
             
             return output, buffer_
 

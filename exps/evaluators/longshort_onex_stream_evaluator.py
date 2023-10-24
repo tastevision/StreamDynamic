@@ -109,7 +109,6 @@ class LONGSHORT_ONEX_COCOEvaluator:
         model = model.eval()
         if half:
             model = model.half()
-
         ids = []
         data_list = []
         progress_bar = tqdm if is_main_process() else iter
@@ -192,8 +191,6 @@ class LONGSHORT_ONEX_COCOEvaluator:
                 label = self.dataloader.dataset.class_ids[int(cls[ind])]
 
                 if int(img_id) in [15060,15061]:
-                    continue
-                elif self.dataloader.dataset.coco.dataset['images'][int(img_id)]['fid'] + 1 == len(self.dataloader.dataset.coco.dataset['images']):
                     continue
                 elif self.dataloader.dataset.coco.dataset['images'][int(img_id+1)]['fid'] == 0:
                     continue

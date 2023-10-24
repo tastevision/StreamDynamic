@@ -129,7 +129,6 @@ def main(exp, args, num_gpu):
     cudnn.benchmark = True
 
     rank = get_local_rank()
-    device = "cuda:{}".format(rank)
 
     file_name = os.path.join(exp.output_dir, args.experiment_name)
 
@@ -156,19 +155,7 @@ def main(exp, args, num_gpu):
     evaluator.per_class_AR = True
 
     torch.cuda.set_device(rank)
-    # 需要在这里特别地将model.long_backbone加载到gpu上
-    for m in model.jian0:
-        m.to(device)
-        m.half()
-    for m in model.jian1:
-        m.to(device)
-        m.half()
-    for m in model.jian2:
-        m.to(device)
-        m.half()
-    model.speed_detector.to(device)
-    model.speed_detector.half()
-    model.to(device)
+    model.cuda(rank)
     model.eval()
 
     if not args.speed and not args.trt:

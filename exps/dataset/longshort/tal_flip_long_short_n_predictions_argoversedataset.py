@@ -66,9 +66,9 @@ class LONGSHORT_xN_ARGOVERSEDataset(Dataset):
     def __len__(self):
         return len(self.ids)
 
-    # def __del__(self):
-    #     if self.imgs:
-    #         del self.imgs
+    def __del__(self):
+        if self.imgs:
+            del self.imgs
 
     def _get_im_anno_file_name_same(self, id_):
         short_im_annos = dict()

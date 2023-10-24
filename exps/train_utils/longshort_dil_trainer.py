@@ -11,8 +11,6 @@ from loguru import logger
 import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.tensorboard import SummaryWriter
-from torch.nn import functional as F
-import numpy as np
 
 # from yolox.data import DataPrefetcher
 from .longshort_data_prefetcher import DataPrefetcher
@@ -36,14 +34,10 @@ from yolox.utils import (
     synchronize
 )
 from .ema import ModelEMA
-from torch import nn
 
 
 class Trainer:
-    def __init__(self, exp: Exp, args, branch_num):
-        """
-        branch_num: 不同历史帧长度的分支数
-        """
+    def __init__(self, exp: Exp, args):
         # init function only defines some basic attr, other attrs like model, optimizer are built in
         # before_train methods.
         self.exp = exp
@@ -65,16 +59,11 @@ class Trainer:
         self.input_size = exp.input_size
         self.best_ap = 0
 
-        self.branch_num = branch_num
-
         # metric record
         self.meter = MeterBuffer(window_size=exp.print_interval)
         self.file_name = os.path.join(exp.output_dir, args.experiment_name)
 
         self.ignore_keys = ["backbone_t", "head_t"]
-
-        # 速度判断器的损失，需要在这里定义，在训练过程中生成必要的监督信息
-        self.speed_lossfn = nn.KLDivLoss(reduction="batchmean", log_target=True)
 
         if self.rank == 0:
             os.makedirs(self.file_name, exist_ok=True)
@@ -121,17 +110,10 @@ class Trainer:
         inps, targets = self.exp.preprocess(inps, targets, self.input_size)
         data_end_time = time.time()
 
-        # beginning of seperately training each branch
-        # branch_compute_time = [1e2 for _ in range(self.branch_num)]
-        # branch_total_loss = [1e10 for _ in range(self.branch_num)]
-        N = np.random.randint(self.branch_num)
-        # for i in range(self.branch_num):
-        # beg = time.time()
         with torch.cuda.amp.autocast(enabled=self.amp_training):
-            outputs = self.model(inps, targets, N_frames=N)
+            outputs = self.model(inps, targets)
 
         loss = outputs["total_loss"]
-        # branch_total_loss[i] = loss
 
         self.optimizer.zero_grad()
         self.scaler.scale(loss).backward()
@@ -140,31 +122,6 @@ class Trainer:
 
         if self.use_model_ema:
             self.ema_model.update(self.model)
-        # end = time.time()
-        # branch_compute_time[i] = end - beg
-
-        # end of seperately training each branch
-
-        # # 计算出训练速度判断器需要的监督信息
-        # tmp_device = branch_total_loss[0].device
-        # branch_compute_time = torch.tensor(branch_compute_time).to(tmp_device)
-        # branch_total_loss = torch.tensor(branch_total_loss).to(tmp_device)
-        # speed_supervision = F.softmax(branch_total_loss * branch_compute_time) # 同时在计算速度和损失上达到最小的那个分支，被视为最合适的分支
-        #
-        # # beginning of router training
-        # with torch.cuda.amp.autocast(enabled=self.amp_training):
-        #     speed_score = self.model(inps, targets, train_router=True)
-        #     speed_supervision = speed_supervision.repeat(speed_score.size()[0], 1)
-        #     speed_loss = self.speed_lossfn(speed_score, speed_supervision)
-        # self.optimizer.zero_grad()
-        # self.scaler.scale(speed_loss).backward()
-        # self.scaler.step(self.optimizer)
-        # self.scaler.update()
-        # print(f"speed detector loss: f{speed_loss}")
-        
-        if self.use_model_ema:
-            self.ema_model.update(self.model)
-        # end of router training
 
         lr = self.lr_scheduler.update_lr(self.progress_in_iter + 1)
         for param_group in self.optimizer.param_groups:
@@ -188,15 +145,6 @@ class Trainer:
         # logger.info(
         #     "Model Summary: {}".format(get_model_info(model, self.exp.test_size))
         # )
-        # 需要在这里特别地将model.long_backbone加载到gpu上
-        for m in model.jian0:
-            m.to(self.device)
-        for m in model.jian1:
-            m.to(self.device)
-        for m in model.jian2:
-            m.to(self.device)
-        model.speed_detector.to(self.device)
-        # model.speed_detector.half()
         model.to(self.device)
 
         # solver related init
@@ -225,7 +173,7 @@ class Trainer:
             occupy_mem(self.local_rank)
 
         if self.is_distributed:
-            model = DDP(model, device_ids=[self.local_rank], broadcast_buffers=False, find_unused_parameters=True)
+            model = DDP(model, device_ids=[self.local_rank], broadcast_buffers=False)
 
         if self.use_model_ema:
             self.ema_model = ModelEMA(model, 0.9998, ignore_keys=self.ignore_keys)
@@ -234,7 +182,7 @@ class Trainer:
         self.model = model
 
         self.evaluator = self.exp.get_evaluator(
-            batch_size=self.args.eval_batch_size, is_distributed=self.is_distributed
+            batch_size=self.args.batch_size, is_distributed=self.is_distributed
         )
         # Tensorboard and Wandb loggers
         if self.rank == 0:

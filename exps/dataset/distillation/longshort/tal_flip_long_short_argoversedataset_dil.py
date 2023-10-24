@@ -19,20 +19,15 @@ class LONGSHORT_Dil_ARGOVERSEDataset(Dataset):
     """
     COCO dataset class.
     """
-    def __init__(self,
-                 data_dir='/data/Datasets/',
-                 json_file='train.json',
+    def __init__(self, data_dir='/data/Datasets/', json_file='train.json',
                  name='train', img_size=(416,416), preproc=None, cache=False,
                  short_cfg=dict(
-                     frame_num=2,
-                     delta=1,
-                 ),
-                 # long_cfg=dict(
-                 #     frame_num=2,
-                 #     delta=2,
-                 #     include_current_frame=True,
-                 # ),
-                 long_cfg=[],
+                    frame_num=2,
+                    delta=1),
+                 long_cfg=dict(
+                    frame_num=2,
+                    delta=2,
+                    include_current_frame=True),
                  ):
         """
         COCO dataset initialization. Annotation data are read into memory by COCO API.

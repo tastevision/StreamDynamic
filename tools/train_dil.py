@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding:utf-8 -*-
 # Copyright (c) Megvii, Inc. and its affiliates.
-"""
-这个脚本只训练speed router
-"""
 
 import argparse
 import random
@@ -118,8 +115,8 @@ def main(exp: Exp, args):
     configure_omp()
     cudnn.benchmark = True
 
-    trainer = exp.get_speed_trainer(args)
-    trainer.train() # 模型在这里完成了在gpu上的加载，具体定义在 yolox/core/trainer.py
+    trainer = exp.get_trainer(args)
+    trainer.train()
 
 
 if __name__ == "__main__":

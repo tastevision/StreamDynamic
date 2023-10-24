@@ -1,41 +1,18 @@
-python tools/train.py \
-    -f cfgs/streamnet_s \
-    -c ./models/coco_pretrained_models/yolox_s_drfpn.pth \
-    -t ./models/teacher_models/l_s50_still_dfp_flip_ep8_4_gpus_bs_8/best_ckpt.pth \
-    --experiment-name streamnet_s_20231021 \
-    --eval-batch-size 8 \
-    -d 4 -b 16 --fp16
+python tools/train_dil.py -f cfgs/streamnet_s \
+                          -c ./data/output/streamnet_s_2023102301/latest_ckpt.pth \
+                          -t ./models/teacher_models/l_s50_still_dfp_flip_ep8_4_gpus_bs_8/best_ckpt.pth \
+                          --resume \
+                          --experiment-name streamnet_s_2023102301 \
+                          --eval-batch-size 8 \
+                          -d 4 -b 32 --fp16
 
-python tools/train_speed_router.py \
-    -f cfgs/streamnet_s \
-    -c ./data/output/streamnet_s_20231019/best_ckpt.pth \
-    -t ./models/teacher_models/l_s50_still_dfp_flip_ep8_4_gpus_bs_8/best_ckpt.pth \
-    --experiment-name streamnet_s_20231021 \
-    --eval-batch-size 8 \
-    -d 4 -b 16 --fp16
-
-# python tools/train.py \
-#     -f cfgs/streamnet_s \
-#     -c ./models/coco_pretrained_models/yolox_s_drfpn.pth \
-#     --experiment-name streamnet_s_20231020 \
-#     --eval-batch-size 8 \
-#     -d 4 -b 16 --fp16
-
-# python tools/train.py \
-#     -f cfgs/streamnet_s \
-#     -c /home/xiang.huang/project/DAMO-StreamNet/models/checkpoints/streamnet_s.pth \
-#     -t ./models/teacher_models/l_s50_still_dfp_flip_ep8_4_gpus_bs_8/best_ckpt.pth \
-#     --experiment-name streamnet_s_20231016 \
-#     --eval-batch-size 8 \
-#     -d 4 -b 20  # --fp16
- 
-# python tools/train.py -f cfgs/streamnet_m \
+# python tools/train_dil.py -f cfgs/streamnet_m \
 #                           -c ./models/coco_pretrained_models/yolox_m_drfpn.pth \
 #                           -t ./models/teacher_models/l_s50_still_dfp_flip_ep8_4_gpus_bs_8/best_ckpt.pth \
 #                           --experiment-name streamnet_m \
-#                           -d 1 -b 4 --fp16
+#                           -d 4 -b 16 --fp16
 
-# python tools/train.py -f cfgs/streamnet_l \
+# python tools/train_dil.py -f cfgs/streamnet_l \
 #                           -c ./models/coco_pretrained_models/yolox_l_drfpn.pth \
 #                           -t ./models/teacher_models/l_s50_still_dfp_flip_ep8_4_gpus_bs_8/best_ckpt.pth \
 #                           --experiment-name streamnet_l \
