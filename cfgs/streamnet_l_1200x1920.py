@@ -5,7 +5,6 @@ import torch
 import torch.nn as nn
 import torch.distributed as dist
 from yolox.exp import Exp as MyExp
-import json
 
 
 class Exp(MyExp):
@@ -34,7 +33,7 @@ class Exp(MyExp):
 
         self.exp_name = os.path.split(os.path.realpath(__file__))[1].split(".")[0]
 
-        self.output_dir = './data/output/'
+        self.output_dir = './data/output/stream_yolo/longshort_new_archi'
 
         self.short_cfg = dict(
                             frame_num=1,
@@ -186,58 +185,28 @@ class Exp(MyExp):
         from exps.dataset.longshort.tal_flip_long_short_argoversedataset import LONGSHORT_ARGOVERSEDataset
         from exps.data.data_augment_flip import LongShortValTransform
 
-        # 在这里拆分val.json并且返回多个evaluation dataloader
-        with open(f"data/Argoverse-HD/annotations/val.json", "r") as f:
-            full_anno = json.loads(f.read())
-        sequences = full_anno["sequences"]
-        val_ds_loader_list = []
+        valdataset = LONGSHORT_ARGOVERSEDataset(
+            data_dir='./data',
+            json_file='val.json',
+            name='val',
+            img_size=self.test_size,
+            preproc=LongShortValTransform(short_frame_num=self.short_cfg["frame_num"],
+                                          long_frame_num=self.long_cfg["frame_num"]),
+            short_cfg=self.short_cfg,
+            long_cfg=self.long_cfg,
+        )
 
-        for sid in sequences:
-            ds = LONGSHORT_ARGOVERSEDataset(
-                data_dir='data',
-                json_file=f'val_{sid}.json',
-                name='val',
-                img_size=self.test_size,
-                preproc=LongShortValTransform(short_frame_num=self.short_cfg["frame_num"],
-                                              long_frame_num=self.long_cfg["frame_num"]),
-                short_cfg=self.short_cfg,
-                long_cfg=self.long_cfg,
-            )
-            if is_distributed:
-                tmp_batch_size = batch_size // dist.get_world_size()
-                sampler = torch.utils.data.distributed.DistributedSampler(ds, shuffle=False)
-            else:
-                tmp_batch_size = batch_size
-                sampler = torch.utils.data.SequentialSampler(ds)
-            dataloader_kwargs = {"num_workers": self.data_num_workers, "pin_memory": True, "sampler": sampler}
-            dataloader_kwargs["batch_size"] = tmp_batch_size
-            val_loader = torch.utils.data.DataLoader(ds, **dataloader_kwargs)
-            val_ds_loader_list.append([val_loader, sid])
+        if is_distributed:
+            batch_size = batch_size // dist.get_world_size()
+            sampler = torch.utils.data.distributed.DistributedSampler(valdataset, shuffle=False)
+        else:
+            sampler = torch.utils.data.SequentialSampler(valdataset)
 
-        return val_ds_loader_list
+        dataloader_kwargs = {"num_workers": self.data_num_workers, "pin_memory": True, "sampler": sampler}
+        dataloader_kwargs["batch_size"] = batch_size
+        val_loader = torch.utils.data.DataLoader(valdataset, **dataloader_kwargs)
 
-        # valdataset = LONGSHORT_ARGOVERSEDataset(
-        #     data_dir='./data',
-        #     json_file='val.json',
-        #     name='val',
-        #     img_size=self.test_size,
-        #     preproc=LongShortValTransform(short_frame_num=self.short_cfg["frame_num"],
-        #                                   long_frame_num=self.long_cfg["frame_num"]),
-        #     short_cfg=self.short_cfg,
-        #     long_cfg=self.long_cfg,
-        # )
-
-        # if is_distributed:
-        #     batch_size = batch_size // dist.get_world_size()
-        #     sampler = torch.utils.data.distributed.DistributedSampler(valdataset, shuffle=False)
-        # else:
-        #     sampler = torch.utils.data.SequentialSampler(valdataset)
-
-        # dataloader_kwargs = {"num_workers": self.data_num_workers, "pin_memory": True, "sampler": sampler}
-        # dataloader_kwargs["batch_size"] = batch_size
-        # val_loader = torch.utils.data.DataLoader(valdataset, **dataloader_kwargs)
-
-        # return val_loader
+        return val_loader
 
     def random_resize(self, data_loader, epoch, rank, is_distributed):
         import random
@@ -281,23 +250,16 @@ class Exp(MyExp):
         # from exps.evaluators.onex_stream_evaluator import ONEX_COCOEvaluator
         from exps.evaluators.longshort_onex_stream_evaluator import LONGSHORT_ONEX_COCOEvaluator
 
-        # 在场景实验中，get_eval_loader返回的是按场景分割的dataloader列表，所以这里的evaluator也是列表
-        val_loader_list = self.get_eval_loader(batch_size, is_distributed, testdev)
-        evaluator_list = []
-
-        for dataloader, sid in val_loader_list:
-            this_evaluator = LONGSHORT_ONEX_COCOEvaluator(
-                dataloader=dataloader,
-                img_size=self.test_size,
-                confthre=self.test_conf,
-                nmsthre=self.nmsthre,
-                num_classes=self.num_classes,
-                testdev=testdev,
-            )
-            this_evaluator.sid = sid
-            evaluator_list.append(this_evaluator)
-
-        return evaluator_list
+        val_loader = self.get_eval_loader(batch_size, is_distributed, testdev)
+        evaluator = LONGSHORT_ONEX_COCOEvaluator(
+            dataloader=val_loader,
+            img_size=self.test_size,
+            confthre=self.test_conf,
+            nmsthre=self.nmsthre,
+            num_classes=self.num_classes,
+            testdev=testdev,
+        )
+        return evaluator
 
 
     def get_trainer(self, args):

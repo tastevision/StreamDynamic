@@ -13,7 +13,7 @@ from exps.model.darknet import CSPDarknet
 from yolox.models.network_blocks import BaseConv, CSPLayer, DWConv
 
 
-class DFPPAFPNLONGV3(nn.Module):
+class DFPPAFPNLONGDYNAMIC(nn.Module):
     """
     相比DFPPAFPNLONG，直接指定输出的通道数
     """
@@ -79,7 +79,7 @@ class DFPPAFPNLONGV3(nn.Module):
                     )
                 )
 
-    def off_forward(self, input, backbone_neck):
+    def off_forward(self, input, N_frame, backbone_neck):
         """
         Args:
             inputs: input images.
@@ -97,7 +97,7 @@ class DFPPAFPNLONGV3(nn.Module):
         support_pan_out2s = []
         support_pan_out1s = []
         support_pan_out0s = []
-        for i in range(self.frame_num - 1):
+        for i in range(N_frame - 1):
 
             support_pan_out2, support_pan_out1, support_pan_out0 = backbone_neck(torch.split(input, 3, dim=1)[i+1])
 
@@ -114,7 +114,7 @@ class DFPPAFPNLONGV3(nn.Module):
 
         frame_start_id = 0
         for i in range(self.conv_group_num):
-            group_frame_num = self.out_channels[i][1]
+            group_frame_num = N_frame
             for j in range(group_frame_num):
                 frame_id = frame_start_id + j
                 pan_out2s.append(getattr(self, f"group_{i}_jian2")(all_pan_out2s[frame_id]))
@@ -148,10 +148,11 @@ class DFPPAFPNLONGV3(nn.Module):
 
         return outputs
 
-    def online_forward(self, input, buffer=None, node='star'):
+    def online_forward(self, input, N_frame, buffer=None, node='star'):
         """
         Args:
             inputs: input images.
+            N_frame: length of history frames
 
         Returns:
             Tuple[Tensor]: FPN feature.
@@ -203,28 +204,32 @@ class DFPPAFPNLONGV3(nn.Module):
     
 
 
-    def forward(self, input, buffer=None, mode='off_pipe', backbone_neck=None):
+    def forward(self, input, N_frame, buffer=None, mode='off_pipe', backbone_neck=None):
+        """
+        N_frame: 表示历史帧长度
+        """
+        assert N_frame <= self.frame_num
 
         if mode=='off_pipe':
             # Glops caculate mode
             if input.size()[1] == 3:
                 input = torch.cat([input, input], dim=1)
-                output = self.off_forward(input, backbone_neck)
+                output = self.off_forward(input, N_frame, backbone_neck)
             # offline train mode
             else:
-                output = self.off_forward(input, backbone_neck)
+                output = self.off_forward(input, N_frame, backbone_neck)
             
             return output
         
         elif mode=='on_pipe':
             # online star state
             if buffer == None:
-                output, buffer_ = self.online_forward(input, node='star')
+                output, buffer_ = self.online_forward(input, N_frame, node='star')
             # online inference
             else:
                 assert len(buffer) == 3
                 assert input.size()[1] == 3
-                output, buffer_ = self.online_forward(input, buffer=buffer, node='buffer')
+                output, buffer_ = self.online_forward(input, N_frame, buffer=buffer, node='buffer')
             
             return output, buffer_
 
