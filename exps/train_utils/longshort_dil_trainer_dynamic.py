@@ -104,7 +104,7 @@ class Trainer:
         在这里，根据self.epoch判断，训练2轮主结构(此时冻结speed_router)，训练1轮speed_router(此时冻结主结构)
         """
         if self.epoch == 0:
-            print("训练主结构，分支判断由随机数给出，保证基础的收敛状态")
+            logger.info("训练主结构，分支判断由随机数给出，保证基础的收敛状态")
             self.model.module.freeze_speed_detector()
             for self.iter in range(self.max_iter):
                 self.before_iter()
@@ -112,7 +112,7 @@ class Trainer:
                 self.after_iter()
             self.model.module.unfreeze_speed_detector()
         elif self.epoch % 2 == 0 and self.epoch != 0:
-            print("训练speed_router，冻结主结构")
+            logger.info("训练speed_router，冻结主结构")
             self.model.module.freeze_main_model()
             for self.iter in range(self.max_iter):
                 self.before_iter()
@@ -120,7 +120,7 @@ class Trainer:
                 self.after_iter_2()
             self.model.module.unfreeze_main_model()
         else:
-            print("训练主结构，分支判断由speed_router给出，同时冻结speed_router")
+            logger.info("训练主结构，分支判断由speed_router给出，同时冻结speed_router")
             self.model.module.freeze_speed_detector()
             for self.iter in range(self.max_iter):
                 self.before_iter()
@@ -220,7 +220,7 @@ class Trainer:
         self.speed_router_scaler.scale(speed_loss).backward()
         self.speed_router_scaler.step(self.speed_router_optimizer)
         self.speed_router_scaler.update()
-        print(f"speed detector loss: f{speed_loss}")
+        logger.info(f"speed detector loss: f{speed_loss}")
 
 
     def train_one_iter_mode_3(self):

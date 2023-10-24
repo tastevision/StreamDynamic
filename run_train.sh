@@ -1,8 +1,8 @@
 python tools/train_dil.py -f cfgs/streamnet_s \
-                          -c ./data/output/streamnet_s_2023102301/latest_ckpt.pth \
+                          -c /home/xiang.huang/project/StreamDynamicTest/data/output/streamnet_s_2023102301/epoch_6_ckpt.pth \
                           -t ./models/teacher_models/l_s50_still_dfp_flip_ep8_4_gpus_bs_8/best_ckpt.pth \
                           --resume \
-                          --experiment-name streamnet_s_2023102301 \
+                          --experiment-name streamnet_s_20231024 \
                           --eval-batch-size 8 \
                           -d 4 -b 32 --fp16
 
