@@ -127,6 +127,8 @@ class Trainer:
             beg = time.time()
             with torch.cuda.amp.autocast(enabled=self.amp_training):
                 outputs = self.model(inps, targets, N_frames=i)
+            loss = outputs["total_loss"]
+            branch_total_loss[i] = loss
             end = time.time()
             branch_compute_time[i] = end - beg
 
@@ -134,7 +136,8 @@ class Trainer:
 
         # 计算出训练速度判断器需要的监督信息
         branch_compute_time = torch.tensor(branch_compute_time).to(self.device)
-        speed_supervision = F.softmax(branch_compute_time) # 同时在计算速度和损失上达到最小的那个分支，被视为最合适的分支
+        branch_total_loss = torch.tensor(branch_total_loss).to(self.device)
+        speed_supervision = F.softmax(branch_total_loss * branch_compute_time) # 同时在计算速度和损失上达到最小的那个分支，被视为最合适的分支
 
         # beginning of router training
         with torch.cuda.amp.autocast(enabled=self.amp_training):
@@ -177,6 +180,9 @@ class Trainer:
         model.speed_detector.to(self.device)
         # model.speed_detector.half()
         model.to(self.device)
+        # 冻结model，但是开启speed_detector的训练
+        model.requires_grad = False
+        model.speed_detector.requires_grad = True
 
         # solver related init
         self.optimizer = self.exp.get_optimizer(self.args.batch_size, ignore_keys=self.ignore_keys)
