@@ -208,8 +208,8 @@ class Trainer:
             branch_compute_time[i] = end - beg
 
         # 计算出训练速度判断器需要的监督信息
-        branch_compute_time = torch.tensor(branch_compute_time).to(self.device)
-        branch_total_loss = torch.tensor(branch_total_loss).to(self.device)
+        branch_compute_time = F.softmax(torch.tensor(branch_compute_time).to(self.device), dim=0)
+        branch_total_loss = F.softmax(torch.tensor(branch_total_loss).to(self.device), dim=0)
         speed_supervision = F.softmax(branch_total_loss * branch_compute_time, dim=0) # 同时在计算速度和损失上达到最小的那个分支，被视为最合适的分支
 
         with torch.cuda.amp.autocast(enabled=self.amp_training):
