@@ -5,7 +5,7 @@
 #                           --resume \
 #                           --experiment-name streamnet_s_20231025 \
 #                           --eval-batch-size 8 \
-#                           -d 4 -b 32 --fp16
+#                           -d 4 -b 4 --fp16
 
 python tools/train_dil.py -f cfgs/streamnet_s \
                           -c ./models/coco_pretrained_models/yolox_s_drfpn.pth \
