@@ -103,6 +103,7 @@ class Trainer:
         """
         在这里，根据self.epoch判断，训练2轮主结构(此时冻结speed_router)，训练1轮speed_router(此时冻结主结构)
         """
+
         if self.epoch == 0:
             logger.info("训练主结构，分支判断由随机数给出，保证基础的收敛状态")
             self.model.module.freeze_speed_detector()
@@ -144,10 +145,8 @@ class Trainer:
         inps, targets = self.exp.preprocess(inps, targets, self.input_size)
         data_end_time = time.time()
 
-        N = np.random.randint(self.branch_num)
-
         with torch.cuda.amp.autocast(enabled=self.amp_training):
-            outputs = self.model(inps, targets, N_frames=N)
+            outputs = self.model(inps, targets, train_mode=0)
 
         loss = outputs["total_loss"]
 
@@ -175,6 +174,7 @@ class Trainer:
         """
         训练speed_router，冻结主结构
         """
+        iter_start_time = time.time()
         inps, targets = self.prefetcher.next()
         # inps = inps.to(self.data_type)
         # targets = targets.to(self.data_type)
@@ -185,44 +185,19 @@ class Trainer:
         targets[1].requires_grad = False
         inps, targets = self.exp.preprocess(inps, targets, self.input_size)
 
-        branch_compute_time = [1e2 for _ in range(self.branch_num)]
-        branch_total_loss = [1e10 for _ in range(self.branch_num)]
-
-        for i in range(self.branch_num):
-            beg = time.time()
-
-            # 计算各个分支的损失
-            # TODO 在这里，inps是有分割的，它是一个列表，长度和设备的数量相等，所以如果想对单个样本做不同的处理，需要把这个训练写在yolox_longshort_oddil_dynamic.py里面
-            # 有一个麻烦的地方，loss需要在这个脚本里得到，而时间是可以在模型中得到的，这样就存在一个监督信息产生位置不同的情况
-            with torch.cuda.amp.autocast(enabled=self.amp_training):
-                outputs = self.model(inps, targets, N_frames=i)
-            loss = outputs["total_loss"]
-            branch_total_loss[i] = loss
-            end = time.time()
-
-            # 伪更新，用于抑制报错
-            self.optimizer.zero_grad()
-            self.scaler.scale(loss).backward()
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
-
-            # 计算各个分支计算的耗时
-            branch_compute_time[i] = end - beg
-
-        # 计算出训练速度判断器需要的监督信息
-        branch_compute_time = F.softmax(torch.tensor(branch_compute_time).to(self.device), dim=0)
-        branch_total_loss = F.softmax(torch.tensor(branch_total_loss).to(self.device), dim=0)
-        speed_supervision = F.softmax(branch_total_loss * branch_compute_time, dim=0) # 同时在计算速度和损失上达到最小的那个分支，被视为最合适的分支
-
         with torch.cuda.amp.autocast(enabled=self.amp_training):
+            with torch.no_grad(): # this is important
+                speed_supervision = self.model(inps, targets, train_mode=1)
+            speed_supervision = speed_supervision.to(self.device)
             speed_score = self.model.module.compute_speed_score(inps)
-            speed_supervision = speed_supervision.repeat(speed_score.size()[0], 1)
             speed_loss = self.speed_lossfn(speed_score, speed_supervision)
+
         self.speed_router_optimizer.zero_grad()
         self.speed_router_scaler.scale(speed_loss).backward()
         self.speed_router_scaler.step(self.speed_router_optimizer)
         self.speed_router_scaler.update()
-        logger.info(f"speed detector loss: f{speed_loss}")
+        iter_end_time = time.time()
+        logger.info(f"iter time: f{iter_end_time - iter_start_time}, speed router loss: f{speed_loss}")
 
 
     def train_one_iter_mode_3(self):
@@ -242,10 +217,7 @@ class Trainer:
         data_end_time = time.time()
 
         with torch.cuda.amp.autocast(enabled=self.amp_training):
-            # 用model内的speed_router给出分支数
-            speed_score = self.model.module.compute_speed_score(inps)
-            N = int(speed_score.argmin(dim=1)[0])
-            outputs = self.model(inps, targets, N_frames=N)
+            outputs = self.model(inps, targets, train_mode=2)
 
         loss = outputs["total_loss"]
 
