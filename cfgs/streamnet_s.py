@@ -26,7 +26,7 @@ class Exp(MyExp):
         self.speed_detector_target_size = (100, 100)
 
         self.warmup_epochs = 1
-        self.max_epoch = 8
+        self.max_epoch = 12
         self.no_aug_epochs = 8
         self.eval_interval = 1
         self.train_ann = 'train.json'
