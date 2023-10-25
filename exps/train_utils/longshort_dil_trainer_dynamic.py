@@ -242,7 +242,7 @@ class Trainer:
         with torch.cuda.amp.autocast(enabled=self.amp_training):
             # 用model内的speed_router给出分支数
             speed_score = self.model.module.compute_speed_score(inps)
-            N = int(speed_score.argmin(dim=1)[0])
+            N = int(speed_score.sum(dim=0).argmin())
             outputs = self.model(inps, targets, N_frames=N)
 
         loss = outputs["total_loss"]
