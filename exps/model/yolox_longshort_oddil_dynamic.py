@@ -239,6 +239,7 @@ class YOLOXLONGSHORTODDILDYNAMIC(nn.Module):
                         raise Exception(f'merge_form must be in ["add", "concat"]')
 
             if self.training:
+                # TODO 在这里，如果训练模式为1时（即需要训练router的时候），输出的loss形状需要改变
                 assert targets is not None
                 # (loss, iou_loss, conf_loss, cls_loss, l1_loss, num_fg), reg_outputs, obj_outputs, cls_outputs = self.head(
                 #     fpn_outs, targets, x

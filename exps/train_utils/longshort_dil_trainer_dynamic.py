@@ -192,6 +192,8 @@ class Trainer:
             beg = time.time()
 
             # 计算各个分支的损失
+            # TODO 在这里，inps是有分割的，它是一个列表，长度和设备的数量相等，所以如果想对单个样本做不同的处理，需要把这个训练写在yolox_longshort_oddil_dynamic.py里面
+            # 有一个麻烦的地方，loss需要在这个脚本里得到，而时间是可以在模型中得到的，这样就存在一个监督信息产生位置不同的情况
             with torch.cuda.amp.autocast(enabled=self.amp_training):
                 outputs = self.model(inps, targets, N_frames=i)
             loss = outputs["total_loss"]
