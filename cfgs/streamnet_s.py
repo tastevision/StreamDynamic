@@ -27,7 +27,7 @@ class Exp(MyExp):
 
         self.warmup_epochs = 1
         self.max_epoch = 12
-        self.no_aug_epochs = 8
+        self.no_aug_epochs = 12
         self.eval_interval = 1
         self.train_ann = 'train.json'
         self.val_ann = 'val.json'

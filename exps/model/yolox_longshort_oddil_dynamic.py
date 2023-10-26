@@ -513,7 +513,7 @@ class YOLOXLONGSHORTODDILDYNAMIC(nn.Module):
                 if outputs == dict():
                     outputs = self.head(fpn_outs)
                 else:
-                    for k, v in self.head(fpn_outs):
+                    for k, v in self.head(fpn_outs).items():
                         outputs[k] += v
 
         return outputs
@@ -522,7 +522,7 @@ class YOLOXLONGSHORTODDILDYNAMIC(nn.Module):
         """
         off_pipe test
         """
-        outputs = dict()
+        outputs = []
         assert self.long_cfg is not None
         # 由self.speed_detector给出每个样本的最优分支
         speed_score = self.compute_speed_score(x)
@@ -531,9 +531,7 @@ class YOLOXLONGSHORTODDILDYNAMIC(nn.Module):
         for idx, N in enumerate(branch_num_list):
             # import pdb; pdb.set_trace()
             # x[0] 0:3 channel 是t帧， 3:6 是t+1帧
-            short_fpn_outs, rurrent_pan_outs = self.short_backbone(x[0][idx:idx+1,:-3,...], buffer=buffer, mode='off_pipe', backbone_neck=self.backbone)
-            fpn_outs_t = self.backbone_t(x[0][idx:idx+1,-3:,...], buffer=buffer, mode='off_pipe')
-
+            short_fpn_outs, rurrent_pan_outs = self.short_backbone(x[0][idx:idx+1,...], buffer=buffer, mode='off_pipe', backbone_neck=self.backbone)
             long_fpn_outs = self.long_backbone(x[1][idx:idx+1,:(N + 1) * 3,...], N + 1, buffer=buffer, mode='off_pipe', backbone_neck=self.backbone) if self.long_backbone is not None else None
 
             if not self.with_short_cut:
@@ -586,13 +584,9 @@ class YOLOXLONGSHORTODDILDYNAMIC(nn.Module):
                     else:
                         raise Exception(f'merge_form must be in ["add", "concat"]')
 
-            if outputs == dict():
-                outputs = self.head(fpn_outs)
-            else:
-                for k, v in self.head(fpn_outs):
-                    outputs[k] += v
+            outputs.append(self.head(fpn_outs))  # [1, 11850, 13]
 
-        return outputs
+        return torch.cat(outputs)
 
     def forward_test_online(self, x, targets=None, buffer=None):
         """
