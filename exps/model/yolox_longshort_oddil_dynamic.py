@@ -511,11 +511,12 @@ class YOLOXLONGSHORTODDILDYNAMIC(nn.Module):
                     outputs["num_fg"] += num_fg
             else:
                 if outputs == dict():
-                    outputs = self.head(fpn_outs)
+                    outputs = [self.head(fpn_outs)]
                 else:
-                    for k, v in self.head(fpn_outs).items():
-                        outputs[k] += v
+                    outputs.append(self.head(fpn_outs))
 
+        if isinstance(outputs, list):
+            return torch.cat(outputs)
         return outputs
 
     def forward_test_offline(self, x, targets=None, buffer=None):
