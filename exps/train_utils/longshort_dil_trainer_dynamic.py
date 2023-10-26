@@ -106,28 +106,28 @@ class Trainer:
 
         if self.epoch < 2:
             logger.info("训练主结构，分支判断由随机数给出，保证基础的收敛状态")
-            self.model.module.freeze_speed_detector()
+            # self.model.module.freeze_speed_detector()
             for self.iter in range(self.max_iter):
                 self.before_iter()
                 self.train_one_iter_mode_1()
                 self.after_iter()
-            self.model.module.unfreeze_speed_detector()
+            # self.model.module.unfreeze_speed_detector()
         elif self.epoch % 2 == 0 and self.epoch != 0:
             logger.info("训练speed_router，冻结主结构")
-            self.model.module.freeze_main_model()
+            # self.model.module.freeze_main_model()
             for self.iter in range(self.max_iter):
                 self.before_iter()
                 self.train_one_iter_mode_2()
                 self.after_iter_2()
-            self.model.module.unfreeze_main_model()
+            # self.model.module.unfreeze_main_model()
         else:
             logger.info("训练主结构，分支判断由speed_router给出，同时冻结speed_router")
-            self.model.module.freeze_speed_detector()
+            # self.model.module.freeze_speed_detector()
             for self.iter in range(self.max_iter):
                 self.before_iter()
                 self.train_one_iter_mode_3()
                 self.after_iter()
-            self.model.module.unfreeze_speed_detector()
+            # self.model.module.unfreeze_speed_detector()
 
     def train_one_iter_mode_1(self):
         """
@@ -186,8 +186,7 @@ class Trainer:
         inps, targets = self.exp.preprocess(inps, targets, self.input_size)
 
         with torch.cuda.amp.autocast(enabled=self.amp_training):
-            with torch.no_grad(): # this is important
-                speed_supervision = self.model(inps, targets, train_mode=1)
+            speed_supervision = self.model(inps, targets, train_mode=1)
             speed_supervision = speed_supervision.to(self.device)
             speed_score = self.model.module.compute_speed_score(inps)
             speed_loss = self.speed_lossfn(speed_score, speed_supervision)
