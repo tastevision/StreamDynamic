@@ -403,6 +403,10 @@ class Trainer:
         `after_iter` contains two parts of logic:
             * reset setting of resize
         """
+        progress_str = "epoch: {}/{}, iter: {}/{}".format(
+            self.epoch + 1, self.max_epoch, self.iter + 1, self.max_iter
+        )
+        logger.info(progress_str)
         # random resizing
         if (self.progress_in_iter + 1) % 10 == 0:
             self.input_size = self.exp.random_resize(
