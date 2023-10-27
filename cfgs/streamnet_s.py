@@ -43,11 +43,11 @@ class Exp(MyExp):
                             out_channels=[((64, 128, 256), 1), ],
                         )
         self.long_cfg = dict(
-                            frame_num=4,
+                            frame_num=3,
                             delta=1,
                             with_short_cut=False,
                             include_current_frame=False,
-                            out_channels=[((21, 42, 85), 4), ],
+                            out_channels=[((21, 42, 85), 3), ],
                         )
         self.yolox_cfg = dict(
                             merge_form="long_fusion",
