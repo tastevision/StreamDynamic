@@ -25,7 +25,7 @@ class Exp(MyExp):
         # 速度检测器的目标尺寸
         self.speed_detector_target_size = (100, 100)
 
-        self.warmup_epochs = 1
+        self.warmup_epochs = 3
         self.max_epoch = 12
         self.no_aug_epochs = 12
         self.eval_interval = 1
@@ -43,11 +43,11 @@ class Exp(MyExp):
                             out_channels=[((64, 128, 256), 1), ],
                         )
         self.long_cfg = dict(
-                            frame_num=3,
+                            frame_num=4,
                             delta=1,
                             with_short_cut=False,
                             include_current_frame=False,
-                            out_channels=[((21, 42, 85), 3), ],
+                            out_channels=[((21, 42, 85), 4), ],
                         )
         self.yolox_cfg = dict(
                             merge_form="long_fusion",

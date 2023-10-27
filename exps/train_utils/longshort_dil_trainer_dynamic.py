@@ -104,7 +104,7 @@ class Trainer:
         在这里，根据self.epoch判断，训练2轮主结构(此时冻结speed_router)，训练1轮speed_router(此时冻结主结构)
         """
 
-        if self.epoch < 2:
+        if self.epoch < 8:
             logger.info("训练主结构，分支判断由随机数给出，保证基础的收敛状态")
             # self.model.module.freeze_speed_detector()
             for self.iter in range(self.max_iter):
@@ -186,7 +186,8 @@ class Trainer:
         inps, targets = self.exp.preprocess(inps, targets, self.input_size)
 
         with torch.cuda.amp.autocast(enabled=self.amp_training):
-            speed_supervision = self.model(inps, targets, train_mode=1)
+            with torch.no_grad():
+                speed_supervision = self.model(inps, targets, train_mode=1)
             speed_supervision = speed_supervision.to(self.device)
             speed_score = self.model.module.compute_speed_score(inps)
             speed_loss = self.speed_lossfn(speed_score, speed_supervision)
@@ -195,6 +196,7 @@ class Trainer:
         self.speed_router_scaler.scale(speed_loss).backward()
         self.speed_router_scaler.step(self.speed_router_optimizer)
         self.speed_router_scaler.update()
+        self.speed_router_lr_scheduler.step()
         iter_end_time = time.time()
         logger.info(f"iter time: f{iter_end_time - iter_start_time}, speed router loss: f{speed_loss}")
 
@@ -262,7 +264,8 @@ class Trainer:
 
         # solver related init
         self.optimizer = self.exp.get_optimizer(self.args.batch_size, ignore_keys=self.ignore_keys)
-        self.speed_router_optimizer = torch.optim.Adam(model.speed_detector.parameters())
+        self.speed_router_optimizer = torch.optim.SGD(model.speed_detector.parameters(), lr=0.01, momentum=0.9)
+        self.speed_router_lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(self.speed_router_optimizer, gamma=0.9)
 
         # value of epoch will be set in `resume_train`
         model = self.resume_train(model)
