@@ -25,9 +25,9 @@ class Exp(MyExp):
         # 速度检测器的目标尺寸
         self.speed_detector_target_size = (100, 100)
 
-        self.warmup_epochs = 3
-        self.max_epoch = 12
-        self.no_aug_epochs = 12
+        self.warmup_epochs = 2
+        self.max_epoch = 4
+        self.no_aug_epochs = 4
         self.eval_interval = 1
         self.train_ann = 'train.json'
         self.val_ann = 'val.json'

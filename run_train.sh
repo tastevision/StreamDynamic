@@ -8,9 +8,9 @@
 #                           -d 4 -b 16 --fp16
 
 python tools/train_dil.py -f cfgs/streamnet_s \
-                          -c ./data/output/streamnet_s_20231025/best_ckpt.pth \
+                          -c ./data/output/streamnet_s_20231027/best_ckpt.pth \
                           -t ./models/teacher_models/l_s50_still_dfp_flip_ep8_4_gpus_bs_8/best_ckpt.pth \
-                          --experiment-name streamnet_s_20231027 \
+                          --experiment-name streamnet_s_20231028 \
                           --eval-batch-size 8 \
                           -d 4 -b 16 --fp16
 
